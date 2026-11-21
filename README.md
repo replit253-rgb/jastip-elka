@@ -19,7 +19,7 @@ Dashboard internal tersedia di `/dashboard` dengan monitor dan pengelolaan paket
 
 Website menampilkan titik pengambilan di Bajawa, Malanuza, dan Aimere. Pelanggan dapat mengirim ulasan dengan rating 1–5 bintang; ulasan baru berstatus menunggu hingga disetujui owner. Pengunjung dapat menghubungi owner melalui WhatsApp atau bergabung ke grup komunitas melalui ajakan di beranda dan halaman layanan.
 
-Barcode QR yang dibuat saat input paket yang sama dipakai untuk verifikasi, konfirmasi pembayaran manual, dan pengambilan. Paket harus diverifikasi sebelum pembayaran dicatat, dan harus lunas sebelum pengambilan dikonfirmasi. Kamera memerlukan izin browser dan secure context; alternatifnya, tempelkan data hasil scan pada halaman pemindai. Integrasi payment gateway belum diaktifkan.
+Barcode QR yang dibuat saat input paket yang sama dipakai untuk verifikasi, konfirmasi pembayaran manual, dan pengambilan. Barcode dapat diunduh sebagai PNG, ditampilkan saat owner mengedit paket, dan dipindai melalui kamera atau gambar yang diunggah. Paket harus diverifikasi sebelum pembayaran dicatat, dan harus lunas sebelum pengambilan dikonfirmasi. Kamera memerlukan izin browser dan secure context; alternatif lainnya, tempelkan data hasil scan pada halaman pemindai. Integrasi payment gateway belum diaktifkan.
 
 Sebelum menjalankan versi yang menambahkan kolom arsip di server yang sudah ada, terapkan skema dengan `npm run db push`, lalu build dan restart aplikasi. Perintah migrasi bersifat idempoten.
 

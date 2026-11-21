@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import type { Html5Qrcode as Html5QrcodeInstance } from "html5-qrcode";
+import { QRCodeCanvas } from "qrcode.react";
 import {
   ArrowRight,
   Archive,
   Check,
   CircleAlert,
   ClipboardCheck,
+  ImageUp,
   PackageCheck,
   Pencil,
   RefreshCw,
@@ -17,6 +19,7 @@ import {
 
 import { PackageStatus, PageHeading } from "@/components/operations-dashboard";
 import { useStaff } from "@/components/operations-dashboard-context";
+import { downloadBarcodePng } from "@/lib/barcode";
 import { apiRequest, formatDate, formatRupiah, type PackageRecord } from "@/lib/operations-api";
 
 type DashboardData = {
@@ -92,6 +95,8 @@ function PackageTable({
     </div>
   );
 }
+
+type ManagedPackage = PackageRecord & { barcodeToken: string };
 
 export function PackageMonitorPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -197,19 +202,19 @@ export function PackageMonitorPage() {
 }
 
 function OwnerPackageManager({ onChanged }: { onChanged: () => void }) {
-  const [packages, setPackages] = useState<PackageRecord[]>([]);
+  const [packages, setPackages] = useState<ManagedPackage[]>([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [busyId, setBusyId] = useState("");
-  const [editing, setEditing] = useState<PackageRecord | null>(null);
+  const [editing, setEditing] = useState<ManagedPackage | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
     const query = new URLSearchParams({ limit: "50", offset: "0" });
-    apiRequest<{ packages: PackageRecord[]; hasMore: boolean; nextOffset: number }>(
+    apiRequest<{ packages: ManagedPackage[]; hasMore: boolean; nextOffset: number }>(
       `/api/packages?${query}`,
     )
       .then((result) => {
@@ -235,7 +240,7 @@ function OwnerPackageManager({ onChanged }: { onChanged: () => void }) {
     try {
       const query = new URLSearchParams({ limit: "50", offset: String(offset) });
       const result = await apiRequest<{
-        packages: PackageRecord[];
+        packages: ManagedPackage[];
         hasMore: boolean;
         nextOffset: number;
       }>(`/api/packages?${query}`);
@@ -272,7 +277,11 @@ function OwnerPackageManager({ onChanged }: { onChanged: () => void }) {
   }
 
   function updatePackage(updated: PackageRecord) {
-    setPackages((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    setPackages((current) =>
+      current.map((item) =>
+        item.id === updated.id ? { ...updated, barcodeToken: item.barcodeToken } : item,
+      ),
+    );
     setEditing(null);
     onChanged();
   }
@@ -389,7 +398,7 @@ function PackageEditor({
   onCancel,
   onSaved,
 }: {
-  item: PackageRecord;
+  item: ManagedPackage;
   onCancel: () => void;
   onSaved: (item: PackageRecord) => void;
 }) {
@@ -426,6 +435,33 @@ function PackageEditor({
       <div className="ops-form__intro">
         <h2>Edit paket {item.tracking_code}</h2>
         <p>Tarif per kilogram tetap mengikuti tarif saat paket dibuat.</p>
+      </div>
+      <div className="ops-package-editor__barcode">
+        <QRCodeCanvas
+          id={`edit-barcode-${item.id}`}
+          value={item.barcodeToken}
+          size={512}
+          level="M"
+          title={`Barcode ${item.tracking_code}`}
+        />
+        <div>
+          <p className="ops-eyebrow">BARCODE PAKET</p>
+          <strong>{item.tracking_code}</strong>
+          <p>Barcode tetap sama setelah data paket diperbarui.</p>
+          <button
+            className="ops-button ops-button--quiet"
+            type="button"
+            onClick={() => {
+              try {
+                downloadBarcodePng(`edit-barcode-${item.id}`, item.tracking_code);
+              } catch (cause) {
+                setError(cause instanceof Error ? cause.message : "Barcode gagal diunduh.");
+              }
+            }}
+          >
+            <ImageUp size={15} aria-hidden="true" /> Unduh PNG
+          </button>
+        </div>
       </div>
       <ErrorMessage>{error}</ErrorMessage>
       <div className="ops-form__grid">
@@ -830,6 +866,32 @@ export function BarcodePage() {
     }
   }
 
+  async function scanImage(event: ChangeEvent<HTMLInputElement>) {
+    const image = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!image) return;
+
+    setError("");
+    setScanned(null);
+    let reader: Html5QrcodeInstance | null = null;
+    try {
+      if (scanner.current?.isScanning) await stopCamera();
+      const { Html5Qrcode } = await import("html5-qrcode");
+      reader = new Html5Qrcode("ops-barcode-reader");
+      const decodedText = await reader.scanFile(image, false);
+      setBarcode(decodedText);
+      await processBarcode(decodedText);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? `Barcode pada gambar tidak dapat dibaca: ${cause.message}`
+          : "Barcode pada gambar tidak dapat dibaca.",
+      );
+    } finally {
+      if (reader && !reader.isScanning) reader.clear();
+    }
+  }
+
   return (
     <>
       <PageHeading
@@ -866,6 +928,11 @@ export function BarcodePage() {
             <ScanLine size={17} aria-hidden="true" />
             {scanning ? "Matikan kamera" : "Aktifkan kamera"}
           </button>
+          <label className="ops-scan-upload">
+            <ImageUp size={17} aria-hidden="true" />
+            <span>Pilih gambar barcode dari perangkat</span>
+            <input type="file" accept="image/*" onChange={(event) => void scanImage(event)} />
+          </label>
           <div className="ops-scan-divider">
             <span>ATAU MASUKKAN HASIL SCAN</span>
           </div>

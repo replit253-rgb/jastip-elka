@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Download, Printer, RotateCcw, ScanLine } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeCanvas } from "qrcode.react";
 
 import { PageHeading, PackageStatus } from "@/components/operations-dashboard";
 import { useStaff } from "@/components/operations-dashboard-context";
+import { downloadBarcodePng } from "@/lib/barcode";
 import { apiRequest, formatDate, formatRupiah, type PackageRecord } from "@/lib/operations-api";
 
 type BarcodePackage = PackageRecord & { barcodeToken: string };
@@ -120,21 +121,11 @@ export function BarcodeLibraryPage() {
   }
 
   function downloadBarcode(item: BarcodePackage) {
-    const svg = document.getElementById(`barcode-svg-${item.id}`);
-    if (!(svg instanceof SVGSVGElement)) {
-      setError(`Barcode ${item.tracking_code} belum siap diunduh. Muat ulang halaman.`);
-      return;
+    try {
+      downloadBarcodePng(`barcode-canvas-${item.id}`, item.tracking_code);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Barcode gagal diunduh.");
     }
-    const content = new XMLSerializer().serializeToString(svg);
-    const blob = new Blob([content], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${item.tracking_code}.svg`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   async function restorePackage(item: BarcodePackage) {
@@ -152,7 +143,7 @@ export function BarcodeLibraryPage() {
       <PageHeading
         eyebrow="LABEL PAKET"
         title="Daftar barcode"
-        description="Unduh barcode sebagai SVG atau cetak label paket. Barcode hanya aktif untuk paket yang tidak diarsipkan."
+        description="Unduh barcode sebagai PNG atau cetak label paket. Barcode hanya aktif untuk paket yang tidak diarsipkan."
       >
         <div className="ops-barcode-library__heading-actions">
           <Link className="ops-button ops-button--quiet" to="/dashboard/scan">
@@ -220,10 +211,10 @@ export function BarcodeLibraryPage() {
                 )}
               </div>
               <div className="ops-barcode-card__qr">
-                <QRCodeSVG
-                  id={`barcode-svg-${item.id}`}
+                <QRCodeCanvas
+                  id={`barcode-canvas-${item.id}`}
                   value={item.barcodeToken}
-                  size={176}
+                  size={512}
                   level="M"
                   title={`Barcode ${item.tracking_code}`}
                 />
@@ -252,7 +243,7 @@ export function BarcodeLibraryPage() {
                   type="button"
                   onClick={() => downloadBarcode(item)}
                 >
-                  <Download size={15} aria-hidden="true" /> Unduh SVG
+                  <Download size={15} aria-hidden="true" /> Unduh PNG
                 </button>
                 {item.archived_at && isOwner && (
                   <button
