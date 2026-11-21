@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Server API Express berjalan di `127.0.0.1:3001`, React/TanStack di `127.0.0.1:5173`, dan tabel PostgreSQL dibuat otomatis saat API pertama kali dimulai. Buka `http://127.0.0.1:5173/login` untuk masuk. Akun owner/admin dari environment hanya dibuat jika email tersebut belum ada di database.
+Server API Express berjalan di `127.0.0.1:3001`, React/TanStack di `127.0.0.1:3013`, dan tabel PostgreSQL dibuat otomatis saat API pertama kali dimulai. Buka `http://127.0.0.1:3013/login` untuk masuk. Akun owner/admin dari environment hanya dibuat jika email tersebut belum ada di database.
 
 ## Dashboard operasional
 
