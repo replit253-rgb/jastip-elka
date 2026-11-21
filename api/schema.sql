@@ -60,3 +60,32 @@ CREATE TABLE IF NOT EXISTS package_events (
 );
 
 CREATE INDEX IF NOT EXISTS package_events_package_idx ON package_events (package_id, created_at);
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id uuid PRIMARY KEY,
+  title text NOT NULL CHECK (char_length(title) BETWEEN 4 AND 120),
+  body text NOT NULL CHECK (char_length(body) BETWEEN 10 AND 2000),
+  is_published boolean NOT NULL DEFAULT true,
+  created_by uuid NOT NULL REFERENCES staff_users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS announcements_public_idx
+  ON announcements (created_at DESC) WHERE is_published = true;
+
+CREATE TABLE IF NOT EXISTS customer_reviews (
+  id uuid PRIMARY KEY,
+  author_name text NOT NULL CHECK (char_length(author_name) BETWEEN 2 AND 80),
+  rating smallint NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  body text NOT NULL CHECK (char_length(body) BETWEEN 10 AND 1000),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  moderated_by uuid REFERENCES staff_users(id),
+  moderated_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS customer_reviews_public_idx
+  ON customer_reviews (created_at DESC) WHERE status = 'approved';
+CREATE INDEX IF NOT EXISTS customer_reviews_moderation_idx
+  ON customer_reviews (status, created_at DESC);

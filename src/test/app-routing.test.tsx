@@ -30,6 +30,8 @@ describe("App routing", () => {
       ["/dashboard/paket-baru", "/dashboard/paket-baru"],
       ["/dashboard/barcode", "/dashboard/barcode"],
       ["/dashboard/pembayaran", "/dashboard/pembayaran"],
+      ["/dashboard/informasi", "/dashboard/informasi"],
+      ["/dashboard/ulasan", "/dashboard/ulasan"],
       ["/dashboard/pengaturan", "/dashboard/pengaturan"],
     ] as const;
 

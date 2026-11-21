@@ -19,9 +19,11 @@ import { Route as TentangKamiRouteImport } from './routes/tentang-kami'
 import { Route as TrackingPaketRouteImport } from './routes/tracking-paket'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as DashboardBarcodeRouteImport } from './routes/dashboard.barcode'
+import { Route as DashboardInformasiRouteImport } from './routes/dashboard.informasi'
 import { Route as DashboardPaketBaruRouteImport } from './routes/dashboard.paket-baru'
 import { Route as DashboardPembayaranRouteImport } from './routes/dashboard.pembayaran'
 import { Route as DashboardPengaturanRouteImport } from './routes/dashboard.pengaturan'
+import { Route as DashboardUlasanRouteImport } from './routes/dashboard.ulasan'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -73,6 +75,11 @@ const DashboardBarcodeRoute = DashboardBarcodeRouteImport.update({
   path: '/barcode',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardInformasiRoute = DashboardInformasiRouteImport.update({
+  id: '/informasi',
+  path: '/informasi',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardPaketBaruRoute = DashboardPaketBaruRouteImport.update({
   id: '/paket-baru',
   path: '/paket-baru',
@@ -88,6 +95,11 @@ const DashboardPengaturanRoute = DashboardPengaturanRouteImport.update({
   path: '/pengaturan',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardUlasanRoute = DashboardUlasanRouteImport.update({
+  id: '/ulasan',
+  path: '/ulasan',
+  getParentRoute: () => DashboardRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -99,9 +111,11 @@ export interface FileRoutesByFullPath {
   '/tentang-kami': typeof TentangKamiRoute
   '/tracking-paket': typeof TrackingPaketRoute
   '/dashboard/barcode': typeof DashboardBarcodeRoute
+  '/dashboard/informasi': typeof DashboardInformasiRoute
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
+  '/dashboard/ulasan': typeof DashboardUlasanRoute
   '/dashboard/': typeof DashboardIndexRoute
 }
 export interface FileRoutesByTo {
@@ -113,9 +127,11 @@ export interface FileRoutesByTo {
   '/tentang-kami': typeof TentangKamiRoute
   '/tracking-paket': typeof TrackingPaketRoute
   '/dashboard/barcode': typeof DashboardBarcodeRoute
+  '/dashboard/informasi': typeof DashboardInformasiRoute
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
+  '/dashboard/ulasan': typeof DashboardUlasanRoute
   '/dashboard': typeof DashboardIndexRoute
 }
 export interface FileRoutesById {
@@ -129,9 +145,11 @@ export interface FileRoutesById {
   '/tentang-kami': typeof TentangKamiRoute
   '/tracking-paket': typeof TrackingPaketRoute
   '/dashboard/barcode': typeof DashboardBarcodeRoute
+  '/dashboard/informasi': typeof DashboardInformasiRoute
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
+  '/dashboard/ulasan': typeof DashboardUlasanRoute
   '/dashboard/': typeof DashboardIndexRoute
 }
 export interface FileRouteTypes {
@@ -146,9 +164,11 @@ export interface FileRouteTypes {
     | '/tentang-kami'
     | '/tracking-paket'
     | '/dashboard/barcode'
+    | '/dashboard/informasi'
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
+    | '/dashboard/ulasan'
     | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -160,9 +180,11 @@ export interface FileRouteTypes {
     | '/tentang-kami'
     | '/tracking-paket'
     | '/dashboard/barcode'
+    | '/dashboard/informasi'
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
+    | '/dashboard/ulasan'
     | '/dashboard'
   id:
     | '__root__'
@@ -175,9 +197,11 @@ export interface FileRouteTypes {
     | '/tentang-kami'
     | '/tracking-paket'
     | '/dashboard/barcode'
+    | '/dashboard/informasi'
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
+    | '/dashboard/ulasan'
     | '/dashboard/'
   fileRoutesById: FileRoutesById
 }
@@ -264,6 +288,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardBarcodeRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/informasi': {
+      id: '/dashboard/informasi'
+      path: '/informasi'
+      fullPath: '/dashboard/informasi'
+      preLoaderRoute: typeof DashboardInformasiRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/paket-baru': {
       id: '/dashboard/paket-baru'
       path: '/paket-baru'
@@ -285,22 +316,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardPengaturanRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/ulasan': {
+      id: '/dashboard/ulasan'
+      path: '/ulasan'
+      fullPath: '/dashboard/ulasan'
+      preLoaderRoute: typeof DashboardUlasanRouteImport
+      parentRoute: typeof DashboardRoute
+    }
   }
 }
 
 interface DashboardRouteChildren {
   DashboardBarcodeRoute: typeof DashboardBarcodeRoute
+  DashboardInformasiRoute: typeof DashboardInformasiRoute
   DashboardPaketBaruRoute: typeof DashboardPaketBaruRoute
   DashboardPembayaranRoute: typeof DashboardPembayaranRoute
   DashboardPengaturanRoute: typeof DashboardPengaturanRoute
+  DashboardUlasanRoute: typeof DashboardUlasanRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardBarcodeRoute: DashboardBarcodeRoute,
+  DashboardInformasiRoute: DashboardInformasiRoute,
   DashboardPaketBaruRoute: DashboardPaketBaruRoute,
   DashboardPembayaranRoute: DashboardPembayaranRoute,
   DashboardPengaturanRoute: DashboardPengaturanRoute,
+  DashboardUlasanRoute: DashboardUlasanRoute,
   DashboardIndexRoute: DashboardIndexRoute,
 }
 

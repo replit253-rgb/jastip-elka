@@ -8,8 +8,10 @@ import {
   ChevronRight,
   CircleUserRound,
   LogOut,
+  Megaphone,
   PackagePlus,
   QrCode,
+  Star,
   Settings2,
 } from "lucide-react";
 
@@ -32,6 +34,8 @@ const navigation = [
   { to: "/dashboard/paket-baru", label: "Input paket", icon: PackagePlus },
   { to: "/dashboard/barcode", label: "Scan barcode", icon: QrCode },
   { to: "/dashboard/pembayaran", label: "Pembayaran", icon: BadgeDollarSign },
+  { to: "/dashboard/informasi", label: "Informasi owner", icon: Megaphone },
+  { to: "/dashboard/ulasan", label: "Moderasi ulasan", icon: Star },
   { to: "/dashboard/pengaturan", label: "Pengaturan harga", icon: Settings2 },
 ] as const;
 

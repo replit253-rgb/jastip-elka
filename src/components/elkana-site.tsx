@@ -20,6 +20,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AnnouncementSection, ReviewsSection } from "@/components/public-content";
 
 const ferryImage = "/1.jpeg";
 const portImage = "/2.jpeg";
@@ -29,6 +30,24 @@ const handoffImage = "/5.jpeg";
 
 const whatsappNumber = "6281242613950";
 const whatsappLink = `https://wa.me/${whatsappNumber}`;
+const whatsappGroupLink = "https://chat.whatsapp.com/LdptOhLPpIdGNEH8LRJHjw?s=qt&p=a&iam=2";
+const pickupPoints = [
+  {
+    name: "Bajawa",
+    counter: "Loket MiniATM Elkana",
+    address: "Depan IbeMart Bajawa",
+  },
+  {
+    name: "Malanuza",
+    counter: "Loket MiniATM Bujaita",
+    address: "Pertigaan Malanuza – Maumbawa",
+  },
+  {
+    name: "Aimere",
+    counter: "Loket MiniATM Elkana",
+    address: "Jembatan I Aimere",
+  },
+] as const;
 
 const navigation = [
   { label: "Beranda", to: "/" },
@@ -212,6 +231,58 @@ function SectionHeading({
   );
 }
 
+function PickupPointSection() {
+  return (
+    <section className="section section--paper pickup-points">
+      <div className="container">
+        <SectionHeading
+          eyebrow="Pick up point"
+          title="Titik pengambilan paket."
+          description="Pilih loket sesuai tujuan. Admin akan mengabari saat paket siap diambil."
+        />
+        <div className="destination-grid">
+          {pickupPoints.map((point) => (
+            <article className="destination-card pickup-point" key={point.name}>
+              <span className="step-card__number">LOKET {point.name.toUpperCase()}</span>
+              <h3>{point.counter}</h3>
+              <p>{point.address}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WhatsappCommunitySection() {
+  return (
+    <section className="section section--paper community-section">
+      <div className="container community-section__inner">
+        <img
+          src="/grup.jpeg"
+          alt="Grup WhatsApp komunitas ELKANA JASTIP"
+          className="community-section__image"
+          loading="lazy"
+        />
+        <div className="community-section__content">
+          <p className="eyebrow">Terhubung dengan ELKANA</p>
+          <h2 className="section-title">Gabung grup WhatsApp kami.</h2>
+          <p className="section-description">
+            Dapatkan informasi layanan dan terhubung dengan komunitas pelanggan ELKANA JASTIP.
+          </p>
+          <Button asChild size="lg" className="community-section__button">
+            <a href={whatsappGroupLink} target="_blank" rel="noopener noreferrer">
+              <MessageCircle aria-hidden="true" />
+              Gabung grup WhatsApp
+              <ArrowUpRight aria-hidden="true" />
+            </a>
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function HomePage() {
   return (
     <main>
@@ -271,6 +342,10 @@ export function HomePage() {
           <span className="route-strip__destinations">Bajawa · Malanuza · Aimere</span>
         </div>
       </section>
+
+      <AnnouncementSection />
+      <PickupPointSection />
+      <WhatsappCommunitySection />
 
       <section className="section">
         <div className="container">
@@ -363,6 +438,7 @@ export function HomePage() {
           </div>
         </div>
       </section>
+      <ReviewsSection whatsappLink={whatsappLink} />
     </main>
   );
 }
@@ -481,28 +557,8 @@ export function ServicesPage() {
           </div>
         </div>
       </section>
-      <section className="section section--paper">
-        <div className="container">
-          <SectionHeading
-            eyebrow="Cakupan tujuan"
-            title="Pilih titik yang paling dekat."
-            description="Semua pengiriman berangkat dari Surabaya, transit di Ende, lalu menuju area tujuan."
-          />
-          <div className="destination-grid">
-            {[
-              { name: "Bajawa", note: "Pengambilan di titik Bajawa" },
-              { name: "Malanuza", note: "Pengambilan di titik Malanuza" },
-              { name: "Aimere", note: "Pengambilan di titik Aimere" },
-            ].map((destination) => (
-              <article className="destination-card" key={destination.name}>
-                <MapPin size={20} className="text-primary" aria-hidden="true" />
-                <h3>{destination.name}</h3>
-                <p>{destination.note}; detail lokasi dikonfirmasi oleh admin.</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
+      <PickupPointSection />
+      <WhatsappCommunitySection />
       <section className="section">
         <div className="container split-layout">
           <div>

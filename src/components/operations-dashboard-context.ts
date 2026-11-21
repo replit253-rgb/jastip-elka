@@ -1,4 +1,4 @@
-import { createContext } from "react";
+import { createContext, useContext } from "react";
 
 export type StaffUser = {
   id: string;
@@ -7,3 +7,9 @@ export type StaffUser = {
 };
 
 export const DashboardContext = createContext<{ user: StaffUser } | null>(null);
+
+export function useStaff() {
+  const context = useContext(DashboardContext);
+  if (!context) throw new Error("Halaman ini harus berada di dalam dashboard ELKANA.");
+  return context.user;
+}

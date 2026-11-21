@@ -17,6 +17,14 @@ import { Pool, type PoolClient } from "pg";
 import { z } from "zod";
 
 import {
+  announcementCreateSchema,
+  announcementStatusSchema,
+  announcementUpdateSchema,
+  assertOwnerRole,
+  reviewModerationSchema,
+  reviewSubmissionSchema,
+} from "./content-workflow.ts";
+import {
   assertCanApplyAction,
   calculateCharge,
   WorkflowError,
@@ -203,6 +211,15 @@ function requireStaff(pool: Pool, sessionSecret: string) {
   };
 }
 
+function requireOwner(request: Request, _response: Response, next: NextFunction) {
+  try {
+    assertOwnerRole(request.staffUser!.role);
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function writePackageEvent(
   client: PoolClient,
   packageId: string,
@@ -231,6 +248,63 @@ async function startServer() {
   app.disable("x-powered-by");
   app.use(express.json({ limit: "32kb" }));
   app.get("/api/health", (_request, response) => response.json({ status: "ok" }));
+
+  app.get("/api/public/announcements", async (_request, response, next) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, title, body, created_at
+         FROM announcements
+         WHERE is_published = true
+         ORDER BY created_at DESC
+         LIMIT 5`,
+      );
+      response.json({ announcements: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/public/reviews", async (_request, response, next) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, author_name, rating, body, created_at
+         FROM customer_reviews
+         WHERE status = 'approved'
+         ORDER BY created_at DESC
+         LIMIT 6`,
+      );
+      response.json({ reviews: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post(
+    "/api/public/reviews",
+    rateLimit({
+      windowMs: 60 * 60 * 1000,
+      limit: 3,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+    }),
+    async (request, response, next) => {
+      try {
+        const review = reviewSubmissionSchema.parse(request.body);
+        const result = await pool.query(
+          `INSERT INTO customer_reviews (id, author_name, rating, body)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, status`,
+          [randomUUID(), review.authorName, review.rating, review.body],
+        );
+        response.status(201).json({
+          review: result.rows[0],
+          message: "Ulasan dikirim dan menunggu persetujuan owner.",
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   app.post(
     "/api/auth/login",
@@ -282,6 +356,117 @@ async function startServer() {
       }
       clearSessionCookie(response);
       response.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/announcements", async (_request, response, next) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, title, body, is_published, created_at, updated_at
+         FROM announcements ORDER BY created_at DESC`,
+      );
+      response.json({ announcements: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/announcements", requireOwner, async (request, response, next) => {
+    try {
+      const input = announcementCreateSchema.parse(request.body);
+      const result = await pool.query(
+        `INSERT INTO announcements (id, title, body, is_published, created_by)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, title, body, is_published, created_at, updated_at`,
+        [randomUUID(), input.title, input.body, input.isPublished, request.staffUser!.id],
+      );
+      response.status(201).json({ announcement: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/announcements/:id", requireOwner, async (request, response, next) => {
+    try {
+      const input = announcementUpdateSchema.parse(request.body);
+      const result = await pool.query(
+        `UPDATE announcements SET title = $2, body = $3, is_published = $4, updated_at = now()
+         WHERE id = $1
+         RETURNING id, title, body, is_published, created_at, updated_at`,
+        [request.params["id"], input.title, input.body, input.isPublished],
+      );
+      if (!result.rows[0]) throw new WorkflowError("Informasi tidak ditemukan.", 404);
+      response.json({ announcement: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/announcements/:id", requireOwner, async (request, response, next) => {
+    try {
+      const { isPublished } = announcementStatusSchema.parse(request.body);
+      const result = await pool.query(
+        `UPDATE announcements SET is_published = $2, updated_at = now()
+         WHERE id = $1
+         RETURNING id, title, body, is_published, created_at, updated_at`,
+        [request.params["id"], isPublished],
+      );
+      if (!result.rows[0]) throw new WorkflowError("Informasi tidak ditemukan.", 404);
+      response.json({ announcement: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/announcements/:id", requireOwner, async (request, response, next) => {
+    try {
+      const result = await pool.query(
+        `UPDATE announcements SET is_published = false, updated_at = now()
+         WHERE id = $1
+         RETURNING id`,
+        [request.params["id"]],
+      );
+      if (!result.rows[0]) throw new WorkflowError("Informasi tidak ditemukan.", 404);
+      response.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/reviews", async (request, response, next) => {
+    try {
+      const status = z
+        .enum(["pending", "approved", "rejected"])
+        .default("pending")
+        .parse(request.query["status"]);
+      const result = await pool.query(
+        `SELECT id, author_name, rating, body, status, moderated_at, created_at
+         FROM customer_reviews
+         WHERE status = $1
+         ORDER BY created_at DESC
+         LIMIT 100`,
+        [status],
+      );
+      response.json({ reviews: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/reviews/:id/moderation", requireOwner, async (request, response, next) => {
+    try {
+      const { status } = reviewModerationSchema.parse(request.body);
+      const result = await pool.query(
+        `UPDATE customer_reviews
+         SET status = $2, moderated_by = $3, moderated_at = now()
+         WHERE id = $1
+         RETURNING id, author_name, rating, body, status, moderated_at, created_at`,
+        [request.params["id"], status, request.staffUser!.id],
+      );
+      if (!result.rows[0]) throw new WorkflowError("Ulasan tidak ditemukan.", 404);
+      response.json({ review: result.rows[0] });
     } catch (error) {
       next(error);
     }
