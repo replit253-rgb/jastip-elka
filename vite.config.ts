@@ -17,6 +17,7 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 3013,
     strictPort: true,
+    allowedHosts: ["jastip.103.245.38.142.sslip.io"],
   },
   resolve: { tsconfigPaths: true },
 });
