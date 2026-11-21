@@ -28,6 +28,7 @@ Variabel yang dibutuhkan tercantum di `.env.example`. Jangan mengganti `BARCODE_
 - `npm run dev` menjalankan API Express dan server React untuk pengembangan.
 - `npm run dev:api` menjalankan API saja.
 - `npm run dev:web` menjalankan frontend saja.
+- `npm run db push` menerapkan `api/schema.sql` ke PostgreSQL yang ditentukan oleh `DATABASE_URL`; perintah ini idempoten untuk skema saat ini dan tidak membuat akun owner/admin.
 - `npm run build` membuat build produksi frontend.
 - `npm run preview` melihat build produksi frontend secara lokal.
 - `npm run start:web` menjalankan frontend hasil build.
