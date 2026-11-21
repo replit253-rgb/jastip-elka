@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import type { Html5Qrcode as Html5QrcodeInstance } from "html5-qrcode";
-import { QRCodeSVG } from "qrcode.react";
 import {
   ArrowRight,
+  Archive,
   Check,
   CircleAlert,
   ClipboardCheck,
   PackageCheck,
-  Printer,
+  Pencil,
   RefreshCw,
+  Save,
   ScanLine,
+  X,
 } from "lucide-react";
 
 import { PackageStatus, PageHeading } from "@/components/operations-dashboard";
+import { useStaff } from "@/components/operations-dashboard-context";
 import { apiRequest, formatDate, formatRupiah, type PackageRecord } from "@/lib/operations-api";
 
 type DashboardData = {
@@ -93,6 +96,7 @@ function PackageTable({
 export function PackageMonitorPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
+  const { role } = useStaff();
 
   async function loadDashboard() {
     setError("");
@@ -165,7 +169,7 @@ export function PackageMonitorPage() {
           </section>
 
           <div className="ops-quick-actions">
-            <Link to="/dashboard/barcode">
+            <Link to="/dashboard/scan">
               <ScanLine size={18} aria-hidden="true" />
               <span>
                 <strong>Proses scan barcode</strong>
@@ -185,38 +189,221 @@ export function PackageMonitorPage() {
           <p className="ops-rate-note">
             Tarif aktif: <strong>{formatRupiah(data.pricePerKg)} / kg</strong>
           </p>
+          {role === "owner" && <OwnerPackageManager onChanged={() => void loadDashboard()} />}
         </>
       )}
     </>
   );
 }
 
-type CreatedPackage = { package: PackageRecord; barcodeToken: string };
-
-export function NewPackagePage() {
-  const [pricePerKg, setPricePerKg] = useState(8000);
-  const [created, setCreated] = useState<CreatedPackage | null>(null);
-  const [saving, setSaving] = useState(false);
+function OwnerPackageManager({ onChanged }: { onChanged: () => void }) {
+  const [packages, setPackages] = useState<PackageRecord[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [busyId, setBusyId] = useState("");
+  const [editing, setEditing] = useState<PackageRecord | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    apiRequest<{ pricePerKg: number }>("/api/settings/price")
-      .then(({ pricePerKg: price }) => setPricePerKg(price))
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "Tarif aktif gagal dimuat."),
-      );
+    let active = true;
+    const query = new URLSearchParams({ limit: "50", offset: "0" });
+    apiRequest<{ packages: PackageRecord[]; hasMore: boolean; nextOffset: number }>(
+      `/api/packages?${query}`,
+    )
+      .then((result) => {
+        if (!active) return;
+        setPackages(result.packages);
+        setOffset(result.nextOffset);
+        setHasMore(result.hasMore);
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : "Daftar paket gagal dimuat.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
+
+  async function loadMore() {
+    setLoadingMore(true);
+    setError("");
+    try {
+      const query = new URLSearchParams({ limit: "50", offset: String(offset) });
+      const result = await apiRequest<{
+        packages: PackageRecord[];
+        hasMore: boolean;
+        nextOffset: number;
+      }>(`/api/packages?${query}`);
+      setPackages((current) => [...current, ...result.packages]);
+      setOffset(result.nextOffset);
+      setHasMore(result.hasMore);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Paket berikutnya gagal dimuat.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function archivePackage(item: PackageRecord) {
+    if (
+      !window.confirm(
+        `Arsipkan paket ${item.tracking_code}? Riwayat dan pembayaran tetap disimpan.`,
+      )
+    ) {
+      return;
+    }
+    setBusyId(item.id);
+    setError("");
+    try {
+      await apiRequest<void>(`/api/packages/${item.id}`, { method: "DELETE" });
+      setPackages((current) => current.filter((entry) => entry.id !== item.id));
+      if (editing?.id === item.id) setEditing(null);
+      onChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Paket gagal diarsipkan.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  function updatePackage(updated: PackageRecord) {
+    setPackages((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    setEditing(null);
+    onChanged();
+  }
+
+  return (
+    <section
+      className="ops-section ops-package-management"
+      aria-labelledby="package-management-title"
+    >
+      <div className="ops-section__heading">
+        <div>
+          <p className="ops-eyebrow">KELOLA DATA</p>
+          <h2 id="package-management-title">Semua paket</h2>
+        </div>
+        <span className="ops-content-count">{packages.length} paket dimuat</span>
+      </div>
+      <ErrorMessage>{error}</ErrorMessage>
+      {loading ? (
+        <LoadingLine />
+      ) : packages.length === 0 ? (
+        <p className="ops-empty">Belum ada paket aktif.</p>
+      ) : (
+        <div className="ops-table-wrap">
+          <table className="ops-table">
+            <thead>
+              <tr>
+                <th>Nomor paket</th>
+                <th>Penerima</th>
+                <th>Tujuan</th>
+                <th>Berat</th>
+                <th>Tagihan</th>
+                <th>Status</th>
+                <th>Aksi owner</th>
+              </tr>
+            </thead>
+            <tbody>
+              {packages.map((item) => {
+                const canEdit = !item.verified_at && !item.paid_at && !item.collected_at;
+                return (
+                  <tr key={item.id}>
+                    <td>
+                      <strong className="ops-code">{item.tracking_code}</strong>
+                    </td>
+                    <td>{item.recipient_name}</td>
+                    <td>{item.destination}</td>
+                    <td>{Number(item.weight_kg).toLocaleString("id-ID")} kg</td>
+                    <td>{formatRupiah(item.total_price)}</td>
+                    <td>
+                      {item.archived_at ? (
+                        <span className="ops-content-status">Diarsipkan</span>
+                      ) : (
+                        <PackageStatus item={item} />
+                      )}
+                    </td>
+                    <td>
+                      <div className="ops-table-actions">
+                        <button
+                          type="button"
+                          className="ops-icon-button"
+                          aria-label={`Edit ${item.tracking_code}`}
+                          title={
+                            canEdit ? "Edit paket" : "Paket yang sudah diproses tidak dapat diedit"
+                          }
+                          disabled={!canEdit || Boolean(busyId)}
+                          onClick={() => setEditing(item)}
+                        >
+                          <Pencil size={15} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="ops-icon-button ops-icon-button--danger"
+                          aria-label={`Arsipkan ${item.tracking_code}`}
+                          title="Arsipkan paket"
+                          disabled={Boolean(busyId)}
+                          onClick={() => void archivePackage(item)}
+                        >
+                          <Archive size={15} aria-hidden="true" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {editing && (
+        <PackageEditor
+          key={editing.id}
+          item={editing}
+          onCancel={() => setEditing(null)}
+          onSaved={updatePackage}
+        />
+      )}
+      {hasMore && !loading && (
+        <div className="ops-package-management__more">
+          <button
+            type="button"
+            className="ops-button ops-button--outline"
+            onClick={() => void loadMore()}
+            disabled={loadingMore || Boolean(busyId)}
+          >
+            {loadingMore ? "Memuat..." : "Muat paket berikutnya"}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PackageEditor({
+  item,
+  onCancel,
+  onSaved,
+}: {
+  item: PackageRecord;
+  onCancel: () => void;
+  onSaved: (item: PackageRecord) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-    setError("");
-    setCreated(null);
     setSaving(true);
+    setError("");
+    const formData = new FormData(event.currentTarget);
     try {
-      const result = await apiRequest<CreatedPackage>("/api/packages", {
-        method: "POST",
+      const result = await apiRequest<{ package: PackageRecord }>(`/api/packages/${item.id}`, {
+        method: "PUT",
         body: JSON.stringify({
           recipientName: formData.get("recipientName"),
           recipientPhone: formData.get("recipientPhone"),
@@ -226,8 +413,163 @@ export function NewPackagePage() {
           weightKg: Number(formData.get("weightKg")),
         }),
       });
-      setCreated(result);
-      form.reset();
+      onSaved(result.package);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Perubahan paket gagal disimpan.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="ops-form ops-package-editor" onSubmit={submit}>
+      <div className="ops-form__intro">
+        <h2>Edit paket {item.tracking_code}</h2>
+        <p>Tarif per kilogram tetap mengikuti tarif saat paket dibuat.</p>
+      </div>
+      <ErrorMessage>{error}</ErrorMessage>
+      <div className="ops-form__grid">
+        <label>
+          Nama penerima
+          <input
+            name="recipientName"
+            defaultValue={item.recipient_name}
+            required
+            minLength={2}
+            maxLength={120}
+          />
+        </label>
+        <label>
+          Nomor telepon penerima
+          <input
+            name="recipientPhone"
+            type="tel"
+            defaultValue={item.recipient_phone ?? ""}
+            required
+            minLength={5}
+            maxLength={32}
+          />
+        </label>
+        <label>
+          Nama pengirim
+          <input
+            name="senderName"
+            defaultValue={item.sender_name ?? ""}
+            required
+            minLength={2}
+            maxLength={120}
+          />
+        </label>
+        <label>
+          Tujuan pengambilan
+          <select name="destination" defaultValue={item.destination}>
+            <option value="Bajawa">Bajawa</option>
+            <option value="Malanuza">Malanuza</option>
+            <option value="Aimere">Aimere</option>
+          </select>
+        </label>
+        <label>
+          Berat paket (kg)
+          <input
+            name="weightKg"
+            type="number"
+            step="0.01"
+            min="0.01"
+            max="500"
+            defaultValue={item.weight_kg}
+            required
+          />
+        </label>
+        <label>
+          Keterangan barang
+          <input name="description" defaultValue={item.description ?? ""} maxLength={250} />
+        </label>
+      </div>
+      <div className="ops-package-editor__actions">
+        <button
+          className="ops-button ops-button--quiet"
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+        >
+          Batal
+        </button>
+        <button className="ops-button ops-button--primary" type="submit" disabled={saving}>
+          <Save size={16} aria-hidden="true" /> {saving ? "Menyimpan..." : "Simpan perubahan"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+type PackageDraft = {
+  id: string;
+  recipientName: string;
+  recipientPhone: string;
+  senderName: string;
+  destination: "Bajawa" | "Malanuza" | "Aimere";
+  description: string;
+  weightKg: number;
+};
+
+export function NewPackagePage() {
+  const [pricePerKg, setPricePerKg] = useState(8000);
+  const [drafts, setDrafts] = useState<PackageDraft[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const recipientRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    apiRequest<{ pricePerKg: number }>("/api/settings/price")
+      .then(({ pricePerKg: price }) => setPricePerKg(price))
+      .catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "Tarif aktif gagal dimuat."),
+      );
+  }, []);
+
+  function addToQueue(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    setError("");
+    setSuccess("");
+    if (drafts.length >= 50) {
+      setError("Satu kali penyimpanan maksimal 50 paket.");
+      return;
+    }
+    setDrafts((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        recipientName: String(formData.get("recipientName")),
+        recipientPhone: String(formData.get("recipientPhone")),
+        senderName: String(formData.get("senderName")),
+        destination: String(formData.get("destination")) as PackageDraft["destination"],
+        description: String(formData.get("description") ?? ""),
+        weightKg: Number(formData.get("weightKg")),
+      },
+    ]);
+    form.reset();
+    recipientRef.current?.focus();
+  }
+
+  async function saveAll() {
+    if (drafts.length === 0) return;
+    setError("");
+    setSuccess("");
+    setSaving(true);
+    try {
+      const result = await apiRequest<{
+        packages: Array<{ package: PackageRecord; barcodeToken: string }>;
+      }>("/api/packages/bulk", {
+        method: "POST",
+        body: JSON.stringify({
+          packages: drafts.map(({ id: _id, ...item }) => item),
+        }),
+      });
+      setSuccess(`${result.packages.length} paket tersimpan dan barcode berhasil dibuat.`);
+      setDrafts([]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Paket gagal disimpan.");
     } finally {
@@ -240,102 +582,163 @@ export function NewPackagePage() {
       <PageHeading
         eyebrow="REGISTRASI PAKET"
         title="Input paket"
-        description="Data penerima, berat, dan tagihan akan tersimpan bersama satu barcode unik."
+        description="Tambahkan beberapa paket ke antrean, lalu simpan semuanya sekaligus dengan barcode unik."
       />
       <ErrorMessage>{error}</ErrorMessage>
-      <div className="ops-form-layout">
-        <form className="ops-form" onSubmit={submit}>
-          <div className="ops-form__intro">
-            <h2>Data pengiriman</h2>
-            <p>Tarif aktif {formatRupiah(pricePerKg)} per kilogram.</p>
-          </div>
-          <div className="ops-form__grid">
-            <label>
-              Nama penerima
-              <input
-                name="recipientName"
-                autoComplete="name"
-                required
-                minLength={2}
-                maxLength={120}
-              />
-            </label>
-            <label>
-              Nomor telepon penerima
-              <input
-                name="recipientPhone"
-                type="tel"
-                autoComplete="tel"
-                required
-                minLength={5}
-                maxLength={32}
-              />
-            </label>
-            <label>
-              Nama pengirim
-              <input name="senderName" required minLength={2} maxLength={120} />
-            </label>
-            <label>
-              Tujuan pengambilan
-              <select name="destination" defaultValue="Bajawa">
-                <option value="Bajawa">Bajawa</option>
-                <option value="Malanuza">Malanuza</option>
-                <option value="Aimere">Aimere</option>
-              </select>
-            </label>
-            <label>
-              Berat paket (kg)
-              <input name="weightKg" type="number" step="0.01" min="0.01" max="500" required />
-            </label>
-            <label>
-              Keterangan barang <span className="ops-optional">opsional</span>
-              <input name="description" maxLength={250} placeholder="Contoh: kardus pakaian" />
-            </label>
-          </div>
-          <div className="ops-form__note">
-            <PackageCheck size={17} aria-hidden="true" />
-            <span>
-              Tagihan dihitung otomatis dan tarif paket tetap mengikuti tarif saat didaftarkan.
-            </span>
-          </div>
-          <button className="ops-button ops-button--primary" type="submit" disabled={saving}>
-            {saving ? "Menyimpan..." : "Simpan & buat barcode"}
-            {!saving && <ArrowRight size={17} aria-hidden="true" />}
-          </button>
-        </form>
+      {success && (
+        <p className="ops-message ops-message--success" role="status">
+          <Check size={17} aria-hidden="true" />
+          {success}{" "}
+          <Link className="ops-text-link" to="/dashboard/barcode">
+            Buka daftar barcode <ArrowRight size={14} aria-hidden="true" />
+          </Link>
+        </p>
+      )}
+      <form className="ops-form ops-batch-form" onSubmit={addToQueue}>
+        <div className="ops-form__intro">
+          <h2>Data pengiriman</h2>
+          <p>Tarif aktif {formatRupiah(pricePerKg)} per kilogram.</p>
+        </div>
+        <div className="ops-form__grid">
+          <label>
+            Nama penerima
+            <input
+              ref={recipientRef}
+              name="recipientName"
+              autoComplete="name"
+              required
+              minLength={2}
+              maxLength={120}
+            />
+          </label>
+          <label>
+            Nomor telepon penerima
+            <input
+              name="recipientPhone"
+              type="tel"
+              autoComplete="tel"
+              required
+              minLength={5}
+              maxLength={32}
+            />
+          </label>
+          <label>
+            Nama pengirim
+            <input name="senderName" required minLength={2} maxLength={120} />
+          </label>
+          <label>
+            Tujuan pengambilan
+            <select name="destination" defaultValue="Bajawa">
+              <option value="Bajawa">Bajawa</option>
+              <option value="Malanuza">Malanuza</option>
+              <option value="Aimere">Aimere</option>
+            </select>
+          </label>
+          <label>
+            Berat paket (kg)
+            <input name="weightKg" type="number" step="0.01" min="0.01" max="500" required />
+          </label>
+          <label>
+            Keterangan barang <span className="ops-optional">opsional</span>
+            <input name="description" maxLength={250} placeholder="Contoh: kardus pakaian" />
+          </label>
+        </div>
+        <div className="ops-form__note">
+          <PackageCheck size={17} aria-hidden="true" />
+          <span>
+            Tagihan dihitung otomatis dan tarif paket tetap mengikuti tarif saat didaftarkan.
+          </span>
+        </div>
+        <button
+          className="ops-button ops-button--primary"
+          type="submit"
+          disabled={saving || drafts.length >= 50}
+        >
+          Tambahkan paket berikutnya
+          <ArrowRight size={17} aria-hidden="true" />
+        </button>
+      </form>
 
-        {created && (
-          <section className="ops-created-label" aria-live="polite">
-            <div className="ops-created-label__top">
-              <span>
-                <Check size={15} aria-hidden="true" /> PAKET TERSIMPAN
-              </span>
+      <section className="ops-section ops-batch-queue" aria-labelledby="package-queue-title">
+        <div className="ops-section__heading">
+          <div>
+            <p className="ops-eyebrow">ANTREAN SIMPAN</p>
+            <h2 id="package-queue-title">Paket berikutnya</h2>
+          </div>
+          <span className="ops-content-count">{drafts.length} / 50 paket</span>
+        </div>
+        {drafts.length === 0 ? (
+          <p className="ops-empty">
+            Belum ada paket di antrean. Isi formulir lalu tambahkan paket.
+          </p>
+        ) : (
+          <>
+            <div className="ops-table-wrap">
+              <table className="ops-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Penerima</th>
+                    <th>Tujuan</th>
+                    <th>Berat</th>
+                    <th>Estimasi tagihan</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {drafts.map((draft, index) => (
+                    <tr key={draft.id}>
+                      <td>{index + 1}</td>
+                      <td>
+                        <strong>{draft.recipientName}</strong>
+                      </td>
+                      <td>{draft.destination}</td>
+                      <td>{draft.weightKg.toLocaleString("id-ID")} kg</td>
+                      <td>{formatRupiah(Math.round(draft.weightKg * pricePerKg))}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="ops-icon-button"
+                          onClick={() =>
+                            setDrafts((current) => current.filter((item) => item.id !== draft.id))
+                          }
+                          aria-label={`Hapus ${draft.recipientName} dari antrean`}
+                          disabled={saving}
+                        >
+                          <X size={16} aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="ops-batch-queue__footer">
+              <p>
+                Total estimasi{" "}
+                <strong>
+                  {formatRupiah(
+                    drafts.reduce((sum, draft) => sum + Math.round(draft.weightKg * pricePerKg), 0),
+                  )}
+                </strong>
+              </p>
               <button
+                className="ops-button ops-button--primary"
                 type="button"
-                className="ops-icon-button"
-                onClick={() => window.print()}
-                aria-label="Cetak barcode"
+                onClick={() => void saveAll()}
+                disabled={saving}
               >
-                <Printer size={17} aria-hidden="true" />
+                {saving ? "Menyimpan semua..." : `Simpan ${drafts.length} paket & buat barcode`}
+                {!saving && <ArrowRight size={17} aria-hidden="true" />}
               </button>
             </div>
-            <h2>{created.package.tracking_code}</h2>
-            <p>
-              {created.package.recipient_name} · {created.package.destination}
+            <p className="ops-form__note">
+              Semua paket disimpan dalam satu transaksi. Jika ada data yang tidak valid, tidak ada
+              paket dari antrean ini yang tersimpan.
             </p>
-            <div className="ops-qr">
-              <QRCodeSVG value={created.barcodeToken} size={188} level="M" />
-            </div>
-            <p className="ops-created-label__instructions">
-              Barcode ini dipakai untuk verifikasi, pembayaran, dan pengambilan.
-            </p>
-            <div className="ops-created-label__amount">
-              <span>{Number(created.package.weight_kg).toLocaleString("id-ID")} kg</span>
-              <strong>{formatRupiah(created.package.total_price)}</strong>
-            </div>
-          </section>
+          </>
         )}
-      </div>
+      </section>
     </>
   );
 }
@@ -591,7 +994,7 @@ export function PaymentsPage() {
         title="Pembayaran"
         description="Pembayaran tunai atau transfer dicatat setelah admin memeriksa bukti/penerimaan."
       >
-        <Link className="ops-button ops-button--primary" to="/dashboard/barcode">
+        <Link className="ops-button ops-button--primary" to="/dashboard/scan">
           <ScanLine size={16} aria-hidden="true" /> Scan pembayaran
         </Link>
       </PageHeading>

@@ -15,13 +15,17 @@ Server API Express berjalan di `127.0.0.1:3001`, React/TanStack di `127.0.0.1:30
 
 ## Dashboard operasional
 
-Dashboard internal tersedia di `/dashboard` dengan halaman monitor paket, input paket, pemindaian barcode, pembayaran, informasi owner, moderasi ulasan, dan pengaturan tarif. Owner dan admin dapat mengelola paket, memproses scan, serta mengubah tarif. Hanya owner yang dapat menerbitkan informasi atau menyetujui/menolak ulasan; admin dapat melihat konten dan statusnya. Tarif awal `Rp8.000/kg` disimpan di PostgreSQL; tarif tiap paket dikunci saat paket dibuat sehingga perubahan harga tidak mengubah tagihan lama.
+Dashboard internal tersedia di `/dashboard` dengan monitor dan pengelolaan paket, antrean input paket, pustaka barcode, pemindai, pembayaran, informasi owner, moderasi ulasan, dan pengaturan tarif. Admin dapat memasukkan hingga 50 paket lalu menyimpan semuanya sekaligus. Setiap paket mendapatkan barcode setelah penyimpanan berhasil. Pustaka di `/dashboard/barcode` menyediakan unduhan SVG dan cetak label; pemindai ada di `/dashboard/scan`. Owner dapat mengubah atau mengarsipkan paket dari monitor; paket yang sudah diproses tidak dapat diedit, sedangkan arsip mempertahankan riwayat pembayaran dan dapat dipulihkan. Hanya owner yang dapat mengarsipkan, memulihkan, menerbitkan informasi, atau menyetujui/menolak ulasan; admin dapat melihat konten dan statusnya. Tarif awal `Rp8.000/kg` disimpan di PostgreSQL; tarif tiap paket dikunci saat paket dibuat sehingga perubahan harga tidak mengubah tagihan lama.
 
 Website menampilkan titik pengambilan di Bajawa, Malanuza, dan Aimere. Pelanggan dapat mengirim ulasan dengan rating 1–5 bintang; ulasan baru berstatus menunggu hingga disetujui owner. Pengunjung dapat menghubungi owner melalui WhatsApp atau bergabung ke grup komunitas melalui ajakan di beranda dan halaman layanan.
 
-Barcode QR yang dibuat saat input paket yang sama dipakai untuk verifikasi, konfirmasi pembayaran manual, dan pengambilan. Paket harus diverifikasi sebelum pembayaran dicatat, dan harus lunas sebelum pengambilan dikonfirmasi. Kamera memerlukan izin browser dan secure context; alternatifnya, tempelkan data hasil scan pada halaman barcode. Integrasi payment gateway belum diaktifkan.
+Barcode QR yang dibuat saat input paket yang sama dipakai untuk verifikasi, konfirmasi pembayaran manual, dan pengambilan. Paket harus diverifikasi sebelum pembayaran dicatat, dan harus lunas sebelum pengambilan dikonfirmasi. Kamera memerlukan izin browser dan secure context; alternatifnya, tempelkan data hasil scan pada halaman pemindai. Integrasi payment gateway belum diaktifkan.
+
+Sebelum menjalankan versi yang menambahkan kolom arsip di server yang sudah ada, terapkan skema dengan `npm run db push`, lalu build dan restart aplikasi. Perintah migrasi bersifat idempoten.
 
 Variabel yang dibutuhkan tercantum di `.env.example`. Jangan mengganti `BARCODE_SECRET` setelah barcode dibuat karena signature label lama tidak akan berlaku lagi.
+
+Untuk menjalankan hasil build pada satu host, jalankan `npm run build` lalu `npm start`. Perintah ini menyalakan API pada port `3001` dan Vite Preview pada port `3013`; Vite Preview meneruskan request `/api` ke API lokal. Pastikan PostgreSQL, `DATABASE_URL`, kredensial owner/admin, `SESSION_SECRET`, dan `BARCODE_SECRET` sudah dikonfigurasi.
 
 ## Perintah
 

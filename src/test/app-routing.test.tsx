@@ -29,6 +29,7 @@ describe("App routing", () => {
       ["/dashboard", "/dashboard/"],
       ["/dashboard/paket-baru", "/dashboard/paket-baru"],
       ["/dashboard/barcode", "/dashboard/barcode"],
+      ["/dashboard/scan", "/dashboard/scan"],
       ["/dashboard/pembayaran", "/dashboard/pembayaran"],
       ["/dashboard/informasi", "/dashboard/informasi"],
       ["/dashboard/ulasan", "/dashboard/ulasan"],

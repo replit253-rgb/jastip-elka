@@ -2098,6 +2098,16 @@ html {
   color: var(--brand-ink);
 }
 
+.ops-table-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.ops-icon-button--danger:hover {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
 .ops-code {
   color: var(--brand-burgundy) !important;
   font-size: 0.72rem;
@@ -2188,6 +2198,153 @@ html {
   grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
   align-items: start;
   gap: clamp(1.5rem, 4vw, 3rem);
+}
+
+.ops-batch-form {
+  padding: clamp(1.2rem, 3vw, 2rem);
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.ops-batch-queue {
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.ops-batch-queue__footer,
+.ops-package-editor__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.1rem;
+}
+
+.ops-batch-queue__footer p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.ops-batch-queue__footer strong {
+  color: var(--brand-ink);
+}
+
+.ops-package-management {
+  padding-top: 1rem;
+}
+
+.ops-package-management__more,
+.ops-barcode-library__more {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.ops-package-editor {
+  margin-top: 1.5rem;
+  padding: clamp(1.1rem, 3vw, 1.75rem);
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--brand-paper) 50%, var(--background));
+}
+
+.ops-package-editor__actions {
+  justify-content: flex-end;
+}
+
+.ops-barcode-library__heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.ops-barcode-library .ops-filter-tabs {
+  margin-bottom: 1.25rem;
+}
+
+.ops-barcode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 1rem;
+}
+
+.ops-barcode-card {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.ops-barcode-card--archived {
+  background: color-mix(in oklab, var(--brand-paper) 65%, var(--background));
+}
+
+.ops-barcode-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ops-barcode-card__heading .ops-eyebrow {
+  margin: 0;
+}
+
+.ops-barcode-card__heading h2 {
+  margin: 0.35rem 0 0;
+  font-size: 0.95rem;
+}
+
+.ops-content-status,
+.ops-content-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ops-barcode-card__qr {
+  display: grid;
+  min-height: 200px;
+  place-items: center;
+  padding: 0.7rem;
+  background: oklch(1 0 0);
+}
+
+.ops-barcode-card__qr svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.ops-barcode-card__details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.ops-barcode-card__details dt {
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+}
+
+.ops-barcode-card__details dd {
+  margin: 0.25rem 0 0;
+  color: var(--brand-ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.ops-barcode-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .ops-form {
@@ -2798,24 +2955,47 @@ html {
 }
 
 @media print {
-  body:has(.ops-created-label) * {
+  body:has(.ops-barcode-library) * {
     visibility: hidden !important;
   }
 
-  .ops-created-label,
-  .ops-created-label * {
+  .ops-barcode-library,
+  .ops-barcode-library * {
     visibility: visible !important;
   }
 
-  .ops-created-label {
+  .ops-barcode-library {
     position: absolute;
-    inset: 0 auto auto 0;
-    width: 320px;
-    border: 0;
+    inset: 0;
+    width: 100%;
+    padding: 0;
   }
 
-  .ops-created-label__top button {
-    display: none;
+  .ops-barcode-library__heading-actions,
+  .ops-barcode-library .ops-filter-tabs,
+  .ops-barcode-library__more,
+  .ops-barcode-card__actions {
+    display: none !important;
+  }
+
+  .ops-barcode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5cm;
+  }
+
+  .ops-barcode-card {
+    break-inside: avoid;
+    border-color: var(--border);
+  }
+
+  .ops-barcode-card__qr {
+    min-height: auto;
+    padding: 0;
+  }
+
+  .ops-barcode-card__qr svg {
+    width: 4cm;
+    height: 4cm;
   }
 }
 

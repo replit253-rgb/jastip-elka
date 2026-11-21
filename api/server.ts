@@ -26,6 +26,9 @@ import {
 } from "./content-workflow.ts";
 import {
   assertCanApplyAction,
+  assertCanEditPackage,
+  packageBatchSchema,
+  packageInputSchema,
   calculateCharge,
   WorkflowError,
   type PackageAction,
@@ -33,14 +36,6 @@ import {
 
 const scrypt = promisify(nodeScrypt);
 const sessionDurationMs = 8 * 60 * 60 * 1000;
-const packageInputSchema = z.object({
-  recipientName: z.string().trim().min(2).max(120),
-  recipientPhone: z.string().trim().min(5).max(32),
-  senderName: z.string().trim().min(2).max(120),
-  destination: z.enum(["Bajawa", "Malanuza", "Aimere"]),
-  description: z.string().trim().max(250).default(""),
-  weightKg: z.number().min(0.01).max(500).multipleOf(0.01),
-});
 const actionSchema = z.object({
   barcodeToken: z.string().min(50).max(200),
   action: z.enum(["verify", "payment", "collect"]),
@@ -476,17 +471,18 @@ async function startServer() {
     try {
       const [summary, packages, setting] = await Promise.all([
         pool.query(
-          `SELECT count(*)::int AS total,
-            count(*) FILTER (WHERE verified_at IS NULL)::int AS awaiting_verification,
-            count(*) FILTER (WHERE verified_at IS NOT NULL AND paid_at IS NULL)::int AS awaiting_payment,
-            count(*) FILTER (WHERE paid_at IS NOT NULL AND collected_at IS NULL)::int AS awaiting_pickup,
+          `SELECT count(*) FILTER (WHERE archived_at IS NULL)::int AS total,
+            count(*) FILTER (WHERE archived_at IS NULL AND verified_at IS NULL)::int AS awaiting_verification,
+            count(*) FILTER (WHERE archived_at IS NULL AND verified_at IS NOT NULL AND paid_at IS NULL)::int AS awaiting_payment,
+            count(*) FILTER (WHERE archived_at IS NULL AND paid_at IS NOT NULL AND collected_at IS NULL)::int AS awaiting_pickup,
             coalesce(sum(total_price) FILTER (WHERE paid_at IS NOT NULL), 0)::int AS paid_total
            FROM packages`,
         ),
         pool.query(
-          `SELECT id, tracking_code, recipient_name, destination, weight_kg,
-            total_price, verified_at, paid_at, collected_at, created_at
-           FROM packages ORDER BY created_at DESC LIMIT 10`,
+          `SELECT id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
+            description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
+            archived_at, created_at
+           FROM packages WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 10`,
         ),
         pool.query<{ setting_value: string }>(
           "SELECT setting_value FROM app_settings WHERE setting_key = 'price_per_kg'",
@@ -502,16 +498,103 @@ async function startServer() {
     }
   });
 
-  app.get("/api/packages", async (_request, response, next) => {
+  app.get("/api/packages", async (request, response, next) => {
     try {
+      const limit = z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .default(50)
+        .parse(request.query["limit"] ?? "50");
+      const offset = z.coerce
+        .number()
+        .int()
+        .min(0)
+        .max(1_000_000)
+        .default(0)
+        .parse(request.query["offset"] ?? "0");
+      const archived =
+        z.enum(["true", "false"]).default("false").parse(request.query["archived"]) === "true";
+      if (archived) assertOwnerRole(request.staffUser!.role);
       const result = await pool.query(
         `SELECT id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-          description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at, created_at
-         FROM packages ORDER BY created_at DESC LIMIT 100`,
+          description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
+          archived_at, created_at
+         FROM packages
+         WHERE archived_at IS ${archived ? "NOT " : ""}NULL
+         ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+        [limit + 1, offset],
       );
-      response.json({ packages: result.rows });
+      const rows = result.rows.slice(0, limit);
+      response.json({
+        packages: rows.map((item) => ({
+          ...item,
+          barcodeToken: createBarcodeToken(item.id, barcodeSecret),
+        })),
+        hasMore: result.rows.length > limit,
+        nextOffset: offset + rows.length,
+      });
     } catch (error) {
       next(error);
+    }
+  });
+
+  app.post("/api/packages/bulk", async (request, response, next) => {
+    const { packages: inputs } = packageBatchSchema.parse(request.body);
+    const staff = request.staffUser!;
+    const client = await pool.connect();
+    const created: Array<{ package: Record<string, unknown>; barcodeToken: string }> = [];
+
+    try {
+      await client.query("BEGIN");
+      const setting = await client.query<{ setting_value: string }>(
+        "SELECT setting_value FROM app_settings WHERE setting_key = 'price_per_kg' FOR SHARE",
+      );
+      const pricePerKg = Number(setting.rows[0]?.setting_value);
+      if (!Number.isSafeInteger(pricePerKg) || pricePerKg < 1) {
+        throw new Error("Tarif per kilogram belum tersedia atau tidak valid.");
+      }
+
+      for (const input of inputs) {
+        const packageId = randomUUID();
+        const trackingCode = `ELK-${randomBytes(6).toString("hex").toUpperCase()}`;
+        const barcodeToken = createBarcodeToken(packageId, barcodeSecret);
+        const totalPrice = calculateCharge(input.weightKg, pricePerKg);
+        const result = await client.query(
+          `INSERT INTO packages (
+            id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
+            description, weight_kg, price_per_kg, total_price, barcode_hash, created_by
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          RETURNING id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
+            description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
+            archived_at, created_at`,
+          [
+            packageId,
+            trackingCode,
+            input.recipientName,
+            input.recipientPhone,
+            input.senderName,
+            input.destination,
+            input.description,
+            input.weightKg,
+            pricePerKg,
+            totalPrice,
+            hashToken(barcodeToken),
+            staff.id,
+          ],
+        );
+        await writePackageEvent(client, packageId, staff.id, "created");
+        created.push({ package: result.rows[0], barcodeToken });
+      }
+
+      await client.query("COMMIT");
+      response.status(201).json({ packages: created });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
     }
   });
 
@@ -566,10 +649,97 @@ async function startServer() {
     }
   });
 
+  app.put("/api/packages/:id", requireOwner, async (request, response, next) => {
+    const input = packageInputSchema.parse(request.body);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<{
+        id: string;
+        price_per_kg: string | number;
+        verified_at: string | null;
+        paid_at: string | null;
+        collected_at: string | null;
+        archived_at: string | null;
+      }>(
+        `SELECT id, price_per_kg, verified_at, paid_at, collected_at, archived_at
+         FROM packages WHERE id = $1 FOR UPDATE`,
+        [request.params["id"]],
+      );
+      const existing = result.rows[0];
+      if (!existing) throw new WorkflowError("Paket tidak ditemukan.", 404);
+      assertCanEditPackage({
+        verifiedAt: existing.verified_at,
+        paidAt: existing.paid_at,
+        collectedAt: existing.collected_at,
+        archivedAt: existing.archived_at,
+      });
+      const totalPrice = calculateCharge(input.weightKg, Number(existing.price_per_kg));
+      const updated = await client.query(
+        `UPDATE packages
+         SET recipient_name = $2, recipient_phone = $3, sender_name = $4, destination = $5,
+             description = $6, weight_kg = $7, total_price = $8
+         WHERE id = $1
+         RETURNING id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
+           description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
+           archived_at, created_at`,
+        [
+          existing.id,
+          input.recipientName,
+          input.recipientPhone,
+          input.senderName,
+          input.destination,
+          input.description,
+          input.weightKg,
+          totalPrice,
+        ],
+      );
+      await client.query("COMMIT");
+      response.json({ package: updated.rows[0] });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/api/packages/:id", requireOwner, async (request, response, next) => {
+    try {
+      const result = await pool.query(
+        `UPDATE packages SET archived_at = now(), archived_by = $2
+         WHERE id = $1 AND archived_at IS NULL
+         RETURNING id`,
+        [request.params["id"], request.staffUser!.id],
+      );
+      if (!result.rows[0])
+        throw new WorkflowError("Paket tidak ditemukan atau sudah diarsipkan.", 404);
+      response.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/packages/:id/restore", requireOwner, async (request, response, next) => {
+    try {
+      const result = await pool.query(
+        `UPDATE packages SET archived_at = NULL, archived_by = NULL
+         WHERE id = $1 AND archived_at IS NOT NULL
+         RETURNING id`,
+        [request.params["id"]],
+      );
+      if (!result.rows[0])
+        throw new WorkflowError("Paket tidak ditemukan atau tidak diarsipkan.", 404);
+      response.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/api/packages/:trackingCode/barcode", async (request, response, next) => {
     try {
       const result = await pool.query<{ id: string }>(
-        "SELECT id FROM packages WHERE tracking_code = $1",
+        "SELECT id FROM packages WHERE tracking_code = $1 AND archived_at IS NULL",
         [request.params.trackingCode],
       );
       const packageId = result.rows[0]?.id;
@@ -605,7 +775,7 @@ async function startServer() {
         `SELECT id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
           description, weight_kg, price_per_kg, total_price, barcode_hash,
           verified_at, paid_at, collected_at
-         FROM packages WHERE id = $1 FOR UPDATE`,
+         FROM packages WHERE id = $1 AND archived_at IS NULL FOR UPDATE`,
         [packageId],
       );
       const packageRow = result.rows[0];
@@ -638,7 +808,7 @@ async function startServer() {
     try {
       const result = await pool.query(
         `SELECT id, tracking_code, recipient_name, recipient_phone, destination, weight_kg,
-          total_price, verified_at, paid_at, collected_at, created_at
+          total_price, verified_at, paid_at, collected_at, archived_at, created_at
          FROM packages ORDER BY (paid_at IS NULL) DESC, created_at DESC LIMIT 100`,
       );
       response.json({ packages: result.rows });

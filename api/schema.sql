@@ -48,7 +48,12 @@ CREATE TABLE IF NOT EXISTS packages (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE packages ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+ALTER TABLE packages
+  ADD COLUMN IF NOT EXISTS archived_by uuid REFERENCES staff_users(id);
+
 CREATE INDEX IF NOT EXISTS packages_created_idx ON packages (created_at DESC);
+CREATE INDEX IF NOT EXISTS packages_archived_idx ON packages (archived_at, created_at DESC);
 CREATE INDEX IF NOT EXISTS packages_payment_idx ON packages (paid_at, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS package_events (

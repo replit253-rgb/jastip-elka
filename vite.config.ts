@@ -18,6 +18,9 @@ export default defineConfig({
     port: 3013,
     strictPort: true,
     allowedHosts: ["jastip.103.245.38.142.sslip.io"],
+    proxy: {
+      "/api": "http://127.0.0.1:3001",
+    },
   },
   resolve: { tsconfigPaths: true },
 });

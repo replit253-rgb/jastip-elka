@@ -23,6 +23,7 @@ import { Route as DashboardInformasiRouteImport } from './routes/dashboard.infor
 import { Route as DashboardPaketBaruRouteImport } from './routes/dashboard.paket-baru'
 import { Route as DashboardPembayaranRouteImport } from './routes/dashboard.pembayaran'
 import { Route as DashboardPengaturanRouteImport } from './routes/dashboard.pengaturan'
+import { Route as DashboardScanRouteImport } from './routes/dashboard.scan'
 import { Route as DashboardUlasanRouteImport } from './routes/dashboard.ulasan'
 
 const IndexRoute = IndexRouteImport.update({
@@ -95,6 +96,11 @@ const DashboardPengaturanRoute = DashboardPengaturanRouteImport.update({
   path: '/pengaturan',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardScanRoute = DashboardScanRouteImport.update({
+  id: '/scan',
+  path: '/scan',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardUlasanRoute = DashboardUlasanRouteImport.update({
   id: '/ulasan',
   path: '/ulasan',
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
+  '/dashboard/scan': typeof DashboardScanRoute
   '/dashboard/ulasan': typeof DashboardUlasanRoute
   '/dashboard/': typeof DashboardIndexRoute
 }
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
+  '/dashboard/scan': typeof DashboardScanRoute
   '/dashboard/ulasan': typeof DashboardUlasanRoute
   '/dashboard': typeof DashboardIndexRoute
 }
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
+  '/dashboard/scan': typeof DashboardScanRoute
   '/dashboard/ulasan': typeof DashboardUlasanRoute
   '/dashboard/': typeof DashboardIndexRoute
 }
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
+    | '/dashboard/scan'
     | '/dashboard/ulasan'
     | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
@@ -184,6 +194,7 @@ export interface FileRouteTypes {
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
+    | '/dashboard/scan'
     | '/dashboard/ulasan'
     | '/dashboard'
   id:
@@ -201,6 +212,7 @@ export interface FileRouteTypes {
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
+    | '/dashboard/scan'
     | '/dashboard/ulasan'
     | '/dashboard/'
   fileRoutesById: FileRoutesById
@@ -316,6 +328,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardPengaturanRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/scan': {
+      id: '/dashboard/scan'
+      path: '/scan'
+      fullPath: '/dashboard/scan'
+      preLoaderRoute: typeof DashboardScanRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/ulasan': {
       id: '/dashboard/ulasan'
       path: '/ulasan'
@@ -332,6 +351,7 @@ interface DashboardRouteChildren {
   DashboardPaketBaruRoute: typeof DashboardPaketBaruRoute
   DashboardPembayaranRoute: typeof DashboardPembayaranRoute
   DashboardPengaturanRoute: typeof DashboardPengaturanRoute
+  DashboardScanRoute: typeof DashboardScanRoute
   DashboardUlasanRoute: typeof DashboardUlasanRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
 }
@@ -342,6 +362,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardPaketBaruRoute: DashboardPaketBaruRoute,
   DashboardPembayaranRoute: DashboardPembayaranRoute,
   DashboardPengaturanRoute: DashboardPengaturanRoute,
+  DashboardScanRoute: DashboardScanRoute,
   DashboardUlasanRoute: DashboardUlasanRoute,
   DashboardIndexRoute: DashboardIndexRoute,
 }

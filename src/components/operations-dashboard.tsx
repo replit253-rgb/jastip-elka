@@ -11,8 +11,9 @@ import {
   Megaphone,
   PackagePlus,
   QrCode,
-  Star,
+  ScanLine,
   Settings2,
+  Star,
 } from "lucide-react";
 
 import { DashboardContext, type StaffUser } from "@/components/operations-dashboard-context";
@@ -32,7 +33,8 @@ export function PackageStatus({ item }: { item: PackageRecord }) {
 const navigation = [
   { to: "/dashboard", label: "Monitor paket", icon: Boxes },
   { to: "/dashboard/paket-baru", label: "Input paket", icon: PackagePlus },
-  { to: "/dashboard/barcode", label: "Scan barcode", icon: QrCode },
+  { to: "/dashboard/barcode", label: "Daftar barcode", icon: QrCode },
+  { to: "/dashboard/scan", label: "Scan barcode", icon: ScanLine },
   { to: "/dashboard/pembayaran", label: "Pembayaran", icon: BadgeDollarSign },
   { to: "/dashboard/informasi", label: "Informasi owner", icon: Megaphone },
   { to: "/dashboard/ulasan", label: "Moderasi ulasan", icon: Star },

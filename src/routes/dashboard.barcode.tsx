@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { BarcodePage } from "@/components/operations-pages";
+import { BarcodeLibraryPage } from "@/components/barcode-library";
 
 export const Route = createFileRoute("/dashboard/barcode")({
-  component: BarcodePage,
+  component: BarcodeLibraryPage,
 });

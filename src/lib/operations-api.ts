@@ -12,6 +12,8 @@ export type PackageRecord = {
   verified_at: string | null;
   paid_at: string | null;
   collected_at: string | null;
+  archived_at?: string | null;
+  barcodeToken?: string;
   created_at: string;
 };
 

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type PackageAction = "verify" | "payment" | "collect";
 
 export type PackageWorkflowState = {
@@ -6,6 +8,21 @@ export type PackageWorkflowState = {
   collectedAt: Date | string | null;
 };
 
+export const packageInputSchema = z.object({
+  recipientName: z.string().trim().min(2).max(120),
+  recipientPhone: z.string().trim().min(5).max(32),
+  senderName: z.string().trim().min(2).max(120),
+  destination: z.enum(["Bajawa", "Malanuza", "Aimere"]),
+  description: z.string().trim().max(250).default(""),
+  weightKg: z.number().min(0.01).max(500).multipleOf(0.01),
+});
+
+export const packageBatchSchema = z.object({
+  packages: z.array(packageInputSchema).min(1).max(50),
+});
+
+export type PackageInput = z.infer<typeof packageInputSchema>;
+
 export class WorkflowError extends Error {
   constructor(
     message: string,
@@ -13,6 +30,17 @@ export class WorkflowError extends Error {
   ) {
     super(message);
     this.name = "WorkflowError";
+  }
+}
+
+export function assertCanEditPackage(
+  state: PackageWorkflowState & { archivedAt: Date | string | null },
+) {
+  if (state.archivedAt) {
+    throw new WorkflowError("Paket yang sudah diarsipkan tidak dapat diubah.", 409);
+  }
+  if (state.verifiedAt || state.paidAt || state.collectedAt) {
+    throw new WorkflowError("Paket yang sudah diproses tidak dapat diubah.", 409);
   }
 }
 

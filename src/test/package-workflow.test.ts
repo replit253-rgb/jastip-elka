@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  assertCanEditPackage,
   assertCanApplyAction,
   calculateCharge,
+  packageBatchSchema,
   WorkflowError,
   type PackageWorkflowState,
 } from "../../api/package-workflow";
@@ -59,6 +61,51 @@ describe("package workflow", () => {
   it("calculates package charges using the saved per-kilogram rate", () => {
     expect(calculateCharge(1, 8000)).toBe(8000);
     expect(calculateCharge(1.25, 8000)).toBe(10000);
+  });
+
+  it("accepts package batches up to 50 entries and rejects larger batches", () => {
+    const packageInput = {
+      recipientName: "Dina",
+      recipientPhone: "08123456789",
+      senderName: "Rani",
+      destination: "Bajawa",
+      weightKg: 1.25,
+    };
+
+    expect(packageBatchSchema.safeParse({ packages: Array(50).fill(packageInput) }).success).toBe(
+      true,
+    );
+    expect(packageBatchSchema.safeParse({ packages: Array(51).fill(packageInput) }).success).toBe(
+      false,
+    );
+    expect(packageBatchSchema.safeParse({ packages: [] }).success).toBe(false);
+  });
+
+  it("allows edits only for active, unprocessed packages", () => {
+    expect(() =>
+      assertCanEditPackage({
+        verifiedAt: null,
+        paidAt: null,
+        collectedAt: null,
+        archivedAt: null,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertCanEditPackage({
+        verifiedAt: "2026-01-01T00:00:00Z",
+        paidAt: null,
+        collectedAt: null,
+        archivedAt: null,
+      }),
+    ).toThrow(WorkflowError);
+    expect(() =>
+      assertCanEditPackage({
+        verifiedAt: null,
+        paidAt: null,
+        collectedAt: null,
+        archivedAt: "2026-01-01T00:00:00Z",
+      }),
+    ).toThrow(WorkflowError);
   });
 
   describe("operations API helper", () => {
