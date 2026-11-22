@@ -3,9 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertCanEditPackage,
   assertCanApplyAction,
+  assertCanDeletePaymentHistory,
+  batchTrackingUpdateSchema,
   calculateCharge,
   packageBatchSchema,
   packageInputSchema,
+  packageUpdateSchema,
   WorkflowError,
   type PackageWorkflowState,
 } from "../../api/package-workflow";
@@ -140,6 +143,62 @@ describe("package workflow", () => {
         archivedAt: "2026-01-01T00:00:00Z",
       }),
     ).toThrow(WorkflowError);
+  });
+
+  it("validates batch tracking updates and prevents deleting payment history after pickup", () => {
+    expect(
+      batchTrackingUpdateSchema.parse({
+        status: "Paket berangkat",
+        location: "Surabaya",
+        information: "Paket dalam perjalanan menuju tujuan.",
+      }).status,
+    ).toBe("Paket berangkat");
+    expect(
+      batchTrackingUpdateSchema.safeParse({
+        status: " ",
+        location: "Surabaya",
+        information: "Paket dalam perjalanan menuju tujuan.",
+      }).success,
+    ).toBe(false);
+
+    expect(() =>
+      assertCanDeletePaymentHistory({
+        verifiedAt: null,
+        paidAt: "2026-01-01T00:00:00Z",
+        collectedAt: null,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertCanDeletePaymentHistory({
+        verifiedAt: null,
+        paidAt: "2026-01-01T00:00:00Z",
+        collectedAt: "2026-01-02T00:00:00Z",
+      }),
+    ).toThrow(WorkflowError);
+  });
+
+  it("allows package edits to update or clear optional sender and recipient contact details", () => {
+    const packageInput = {
+      recipientName: "Santi Endu",
+      destination: "Bajawa",
+      pcs: 1,
+      weightKg: 1.5,
+    };
+
+    expect(
+      packageUpdateSchema.parse({
+        ...packageInput,
+        recipientPhone: "08123456789",
+        senderName: "Dina",
+      }),
+    ).toMatchObject({ recipientPhone: "08123456789", senderName: "Dina" });
+    expect(
+      packageUpdateSchema.parse({
+        ...packageInput,
+        recipientPhone: null,
+        senderName: null,
+      }),
+    ).toMatchObject({ recipientPhone: null, senderName: null });
   });
 
   describe("operations API helper", () => {

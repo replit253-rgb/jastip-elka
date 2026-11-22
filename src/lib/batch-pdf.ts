@@ -92,6 +92,7 @@ export function createBatchPdf(batch: BatchPdfInfo, items: BatchPdfItem[]) {
     let x = pageMargin;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
+    doc.setTextColor(32, 34, 38);
     doc.setFillColor(index % 2 === 0 ? 250 : 255, index % 2 === 0 ? 248 : 255, 246);
     doc.setDrawColor(222, 222, 222);
     for (const [cellIndex, lines] of wrapped.entries()) {

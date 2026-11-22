@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CircleUserRound,
   LogOut,
+  MapPin,
   Megaphone,
   PackagePlus,
   QrCode,
@@ -36,6 +37,7 @@ const navigation = [
   { to: "/dashboard/paket-baru", label: "Input paket", icon: PackagePlus },
   { to: "/dashboard/barcode", label: "Daftar barcode", icon: QrCode },
   { to: "/dashboard/scan", label: "Scan barcode", icon: ScanLine },
+  { to: "/dashboard/tracking", label: "Tracking paket", icon: MapPin, ownerOnly: true },
   { to: "/dashboard/pembayaran", label: "Pembayaran", icon: BadgeDollarSign },
   { to: "/dashboard/informasi", label: "Informasi owner", icon: Megaphone },
   { to: "/dashboard/batch", label: "Batch pengiriman", icon: Upload },
@@ -111,18 +113,20 @@ export function OperationsDashboard() {
 
           <p className="ops-nav-label">OPERASIONAL</p>
           <nav className="ops-nav" aria-label="Navigasi dashboard">
-            {navigation.map(({ to, label, icon: Icon }) => (
-              <Link
-                key={to}
-                to={to}
-                {...(to === "/dashboard" ? { activeOptions: { exact: true } } : {})}
-                className="ops-nav__link"
-              >
-                <Icon size={18} aria-hidden="true" />
-                <span>{label}</span>
-                <ChevronRight className="ops-nav__arrow" size={14} aria-hidden="true" />
-              </Link>
-            ))}
+            {navigation
+              .filter((item) => !("ownerOnly" in item) || !item.ownerOnly || user.role === "owner")
+              .map(({ to, label, icon: Icon }) => (
+                <Link
+                  key={to}
+                  to={to}
+                  {...(to === "/dashboard" ? { activeOptions: { exact: true } } : {})}
+                  className="ops-nav__link"
+                >
+                  <Icon size={18} aria-hidden="true" />
+                  <span>{label}</span>
+                  <ChevronRight className="ops-nav__arrow" size={14} aria-hidden="true" />
+                </Link>
+              ))}
           </nav>
 
           <div className="ops-sidebar__bottom">

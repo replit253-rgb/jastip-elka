@@ -3287,18 +3287,33 @@ html {
 }
 
 @media print {
-  body:has(.ops-barcode-library) * {
-    visibility: hidden !important;
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
   }
 
-  .ops-barcode-library,
-  .ops-barcode-library * {
-    visibility: visible !important;
+  .ops-shell,
+  .ops-main {
+    display: block !important;
+    min-height: 0 !important;
+  }
+
+  .ops-sidebar,
+  .ops-topbar,
+  .ops-banner,
+  .ops-footer {
+    display: none !important;
+  }
+
+  .ops-content {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .ops-barcode-library {
-    position: absolute;
-    inset: 0;
+    position: static;
     width: 100%;
     padding: 0;
   }

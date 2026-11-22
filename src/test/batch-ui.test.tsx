@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BatchUploadPage } from "@/components/batch-upload-page";
 import { BarcodeLibraryPage } from "@/components/barcode-library";
 import { DashboardContext } from "@/components/operations-dashboard-context";
+import { PaymentsPage } from "@/components/operations-pages";
+import { TrackingManagementPage } from "@/components/tracking-management-page";
 import { BatchListSection } from "@/components/elkana-site";
 import { createBatchPdf } from "@/lib/batch-pdf";
 
@@ -282,6 +284,196 @@ describe("public batch list", () => {
         `/api/batches/${batchId}`,
         expect.objectContaining({ method: "DELETE" }),
       );
+    });
+
+    it("allows an owner to edit an unprocessed package from its barcode page", async () => {
+      const packageId = "00000000-0000-4000-8000-000000000002";
+      const packageRecord = {
+        id: packageId,
+        batch_id: "00000000-0000-4000-8000-000000000001",
+        tracking_code: "ELK-123456789ABC",
+        barcodeToken: "barcode-token",
+        recipient_name: "Santi Endu",
+        destination: "Bajawa",
+        description: "",
+        pcs: 2,
+        weight_kg: "1.5",
+        price_per_kg: 16000,
+        total_price: 24000,
+        verified_at: null,
+        paid_at: null,
+        collected_at: null,
+        archived_at: null,
+        created_at: "2026-11-22T00:00:00Z",
+      };
+      const fetchMock = vi.fn((request: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(request);
+        if (url === "/api/batches")
+          return Promise.resolve(
+            new Response(JSON.stringify({ batches: [] }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        if (url === `/api/packages/${packageId}` && init?.method === "PUT") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ package: { ...packageRecord, recipient_name: "Dina" } }),
+              {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              },
+            ),
+          );
+        }
+        if (url === `/api/packages/${packageId}`) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ package: packageRecord }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(
+        <DashboardContext.Provider
+          value={{ user: { id: "owner-id", email: "owner@example.com", role: "owner" } }}
+        >
+          <BarcodeLibraryPage selectedPackageId={packageId} />
+        </DashboardContext.Provider>,
+      );
+
+      expect(
+        await screen.findByRole("heading", { name: packageRecord.tracking_code }),
+      ).toBeVisible();
+      fireEvent.change(screen.getByLabelText("Nama penerima"), { target: { value: "Dina" } });
+      fireEvent.click(screen.getByRole("button", { name: "Simpan perubahan" }));
+
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "Data paket berhasil diperbarui.",
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/packages/${packageId}`,
+        expect.objectContaining({ method: "PUT" }),
+      );
+    });
+
+    it("sends an owner tracking update to every active package in the chosen batch", async () => {
+      const batchId = "00000000-0000-4000-8000-000000000003";
+      const fetchMock = vi.fn((request: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(request);
+        if (url === "/api/batches")
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                batches: [
+                  {
+                    id: batchId,
+                    title: "BATCH 34",
+                    destination: "Bajawa",
+                    package_count: 2,
+                  },
+                ],
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        if (url === `/api/batches/${batchId}/tracking` && init?.method === "POST")
+          return Promise.resolve(
+            new Response(JSON.stringify({ updatedPackages: 2 }), {
+              status: 201,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(
+        <DashboardContext.Provider
+          value={{ user: { id: "owner-id", email: "owner@example.com", role: "owner" } }}
+        >
+          <TrackingManagementPage />
+        </DashboardContext.Provider>,
+      );
+
+      fireEvent.change(await screen.findByLabelText("Status perjalanan"), {
+        target: { value: "Paket berangkat" },
+      });
+      fireEvent.change(screen.getByLabelText("Lokasi terakhir"), {
+        target: { value: "Surabaya" },
+      });
+      fireEvent.change(screen.getByLabelText("Informasi untuk pelanggan"), {
+        target: { value: "Paket sedang menuju Bajawa." },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Kirim ke semua paket di batch" }));
+
+      expect(await screen.findByRole("status")).toHaveTextContent("2 paket");
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/batches/${batchId}/tracking`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            status: "Paket berangkat",
+            location: "Surabaya",
+            information: "Paket sedang menuju Bajawa.",
+          }),
+        }),
+      );
+    });
+
+    it("lets owners delete a payment history and refreshes the payment status", async () => {
+      const packageId = "00000000-0000-4000-8000-000000000004";
+      const paidPackage = {
+        id: packageId,
+        tracking_code: "ELK-123456789ABC",
+        recipient_name: "Santi Endu",
+        destination: "Bajawa",
+        pcs: 2,
+        weight_kg: "1.5",
+        total_price: 24000,
+        verified_at: "2026-11-21T00:00:00Z",
+        paid_at: "2026-11-22T00:00:00Z",
+        collected_at: null,
+        created_at: "2026-11-20T00:00:00Z",
+      };
+      const fetchMock = vi.fn((request: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(request);
+        if (url === "/api/payments")
+          return Promise.resolve(
+            new Response(JSON.stringify({ packages: [paidPackage] }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        if (url === `/api/payments/${packageId}` && init?.method === "DELETE")
+          return Promise.resolve(new Response(null, { status: 204 }));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+
+      render(
+        <DashboardContext.Provider
+          value={{ user: { id: "owner-id", email: "owner@example.com", role: "owner" } }}
+        >
+          <PaymentsPage />
+        </DashboardContext.Provider>,
+      );
+
+      fireEvent.click(await screen.findByRole("button", { name: "Lunas" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Hapus riwayat" }));
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          `/api/payments/${packageId}`,
+          expect.objectContaining({ method: "DELETE" }),
+        );
+      });
+      expect(screen.queryByText("ELK-123456789ABC")).not.toBeInTheDocument();
     });
   });
 

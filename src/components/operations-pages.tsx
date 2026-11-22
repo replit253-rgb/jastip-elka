@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Link } from "@tanstack/react-router";
 import type { Html5Qrcode as Html5QrcodeInstance } from "html5-qrcode";
 import { QRCodeCanvas } from "qrcode.react";
@@ -14,6 +21,7 @@ import {
   RefreshCw,
   Save,
   ScanLine,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -55,9 +63,11 @@ function LoadingLine() {
 function PackageTable({
   packages,
   emptyMessage = "Belum ada paket.",
+  actions,
 }: {
   packages: PackageRecord[];
   emptyMessage?: string;
+  actions?: ((item: PackageRecord) => ReactNode) | undefined;
 }) {
   if (!packages.length) return <p className="ops-empty">{emptyMessage}</p>;
   return (
@@ -73,6 +83,7 @@ function PackageTable({
             <th>Tagihan</th>
             <th>Status</th>
             <th>Masuk</th>
+            {actions && <th>Aksi</th>}
           </tr>
         </thead>
         <tbody>
@@ -90,6 +101,7 @@ function PackageTable({
                 <PackageStatus item={item} />
               </td>
               <td>{formatDate(item.created_at)}</td>
+              {actions && <td>{actions(item)}</td>}
             </tr>
           ))}
         </tbody>
@@ -98,7 +110,7 @@ function PackageTable({
   );
 }
 
-type ManagedPackage = PackageRecord & { barcodeToken: string };
+export type ManagedPackage = PackageRecord & { barcodeToken: string };
 
 export function PackageMonitorPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -397,7 +409,7 @@ function OwnerPackageManager({ onChanged }: { onChanged: () => void }) {
   );
 }
 
-function PackageEditor({
+export function PackageEditor({
   item,
   onCancel,
   onSaved,
@@ -420,6 +432,8 @@ function PackageEditor({
         method: "PUT",
         body: JSON.stringify({
           recipientName: formData.get("recipientName"),
+          recipientPhone: formData.get("recipientPhone") || null,
+          senderName: formData.get("senderName") || null,
           destination: formData.get("destination"),
           description: formData.get("description"),
           pcs: Number(formData.get("pcs")),
@@ -478,6 +492,25 @@ function PackageEditor({
             name="recipientName"
             defaultValue={item.recipient_name}
             required
+            minLength={2}
+            maxLength={120}
+          />
+        </label>
+        <label>
+          Nomor telepon penerima
+          <input
+            name="recipientPhone"
+            type="tel"
+            defaultValue={item.recipient_phone ?? ""}
+            minLength={5}
+            maxLength={32}
+          />
+        </label>
+        <label>
+          Nama pengirim
+          <input
+            name="senderName"
+            defaultValue={item.sender_name ?? ""}
             minLength={2}
             maxLength={120}
           />
@@ -1126,6 +1159,9 @@ export function PaymentsPage() {
   const [packages, setPackages] = useState<PackageRecord[] | null>(null);
   const [filter, setFilter] = useState<"all" | "unpaid" | "paid">("unpaid");
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState("");
+  const { role } = useStaff();
+  const isOwner = role === "owner";
 
   useEffect(() => {
     apiRequest<{ packages: PackageRecord[] }>("/api/payments")
@@ -1144,6 +1180,31 @@ export function PaymentsPage() {
     (sum, item) => sum + (item.paid_at ? item.total_price : 0),
     0,
   );
+
+  async function deletePaymentHistory(item: PackageRecord) {
+    if (
+      !window.confirm(
+        `Hapus riwayat pembayaran untuk paket ${item.tracking_code}? Status pembayaran akan dikembalikan menjadi belum lunas.`,
+      )
+    ) {
+      return;
+    }
+    setError("");
+    setBusyId(item.id);
+    try {
+      await apiRequest<void>(`/api/payments/${item.id}`, { method: "DELETE" });
+      setPackages(
+        (current) =>
+          current?.map((packageItem) =>
+            packageItem.id === item.id ? { ...packageItem, paid_at: null } : packageItem,
+          ) ?? null,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Riwayat pembayaran gagal dihapus.");
+    } finally {
+      setBusyId("");
+    }
+  }
 
   return (
     <>
@@ -1186,7 +1247,31 @@ export function PaymentsPage() {
         {!packages ? (
           <LoadingLine />
         ) : (
-          <PackageTable packages={filtered} emptyMessage="Tidak ada data untuk filter ini." />
+          <PackageTable
+            packages={filtered}
+            emptyMessage="Tidak ada data untuk filter ini."
+            actions={
+              isOwner
+                ? (item) =>
+                    item.paid_at ? (
+                      <button
+                        className="ops-button ops-button--quiet"
+                        type="button"
+                        onClick={() => void deletePaymentHistory(item)}
+                        disabled={busyId === item.id || Boolean(item.collected_at)}
+                        title={
+                          item.collected_at
+                            ? "Paket sudah diambil; riwayat pembayaran tidak dapat dihapus."
+                            : "Hapus riwayat pembayaran"
+                        }
+                      >
+                        <Trash2 size={15} aria-hidden="true" />
+                        {busyId === item.id ? "Menghapus..." : "Hapus riwayat"}
+                      </button>
+                    ) : null
+                : undefined
+            }
+          />
         )}
       </section>
     </>

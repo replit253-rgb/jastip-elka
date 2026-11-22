@@ -25,6 +25,7 @@ import { Route as DashboardPaketBaruRouteImport } from './routes/dashboard.paket
 import { Route as DashboardPembayaranRouteImport } from './routes/dashboard.pembayaran'
 import { Route as DashboardPengaturanRouteImport } from './routes/dashboard.pengaturan'
 import { Route as DashboardScanRouteImport } from './routes/dashboard.scan'
+import { Route as DashboardTrackingRouteImport } from './routes/dashboard.tracking'
 import { Route as DashboardUlasanRouteImport } from './routes/dashboard.ulasan'
 
 const IndexRoute = IndexRouteImport.update({
@@ -107,6 +108,11 @@ const DashboardScanRoute = DashboardScanRouteImport.update({
   path: '/scan',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardTrackingRoute = DashboardTrackingRouteImport.update({
+  id: '/tracking',
+  path: '/tracking',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardUlasanRoute = DashboardUlasanRouteImport.update({
   id: '/ulasan',
   path: '/ulasan',
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
   '/dashboard/scan': typeof DashboardScanRoute
+  '/dashboard/tracking': typeof DashboardTrackingRoute
   '/dashboard/ulasan': typeof DashboardUlasanRoute
   '/dashboard/': typeof DashboardIndexRoute
 }
@@ -147,6 +154,7 @@ export interface FileRoutesByTo {
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
   '/dashboard/scan': typeof DashboardScanRoute
+  '/dashboard/tracking': typeof DashboardTrackingRoute
   '/dashboard/ulasan': typeof DashboardUlasanRoute
   '/dashboard': typeof DashboardIndexRoute
 }
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
   '/dashboard/scan': typeof DashboardScanRoute
+  '/dashboard/tracking': typeof DashboardTrackingRoute
   '/dashboard/ulasan': typeof DashboardUlasanRoute
   '/dashboard/': typeof DashboardIndexRoute
 }
@@ -188,6 +197,7 @@ export interface FileRouteTypes {
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
     | '/dashboard/scan'
+    | '/dashboard/tracking'
     | '/dashboard/ulasan'
     | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
@@ -206,6 +216,7 @@ export interface FileRouteTypes {
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
     | '/dashboard/scan'
+    | '/dashboard/tracking'
     | '/dashboard/ulasan'
     | '/dashboard'
   id:
@@ -225,6 +236,7 @@ export interface FileRouteTypes {
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
     | '/dashboard/scan'
+    | '/dashboard/tracking'
     | '/dashboard/ulasan'
     | '/dashboard/'
   fileRoutesById: FileRoutesById
@@ -354,6 +366,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardScanRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/tracking': {
+      id: '/dashboard/tracking'
+      path: '/tracking'
+      fullPath: '/dashboard/tracking'
+      preLoaderRoute: typeof DashboardTrackingRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/ulasan': {
       id: '/dashboard/ulasan'
       path: '/ulasan'
@@ -372,6 +391,7 @@ interface DashboardRouteChildren {
   DashboardPembayaranRoute: typeof DashboardPembayaranRoute
   DashboardPengaturanRoute: typeof DashboardPengaturanRoute
   DashboardScanRoute: typeof DashboardScanRoute
+  DashboardTrackingRoute: typeof DashboardTrackingRoute
   DashboardUlasanRoute: typeof DashboardUlasanRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
 }
@@ -384,6 +404,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardPembayaranRoute: DashboardPembayaranRoute,
   DashboardPengaturanRoute: DashboardPengaturanRoute,
   DashboardScanRoute: DashboardScanRoute,
+  DashboardTrackingRoute: DashboardTrackingRoute,
   DashboardUlasanRoute: DashboardUlasanRoute,
   DashboardIndexRoute: DashboardIndexRoute,
 }

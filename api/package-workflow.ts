@@ -22,6 +22,17 @@ export const packageBatchSchema = z.object({
   packages: z.array(packageInputSchema).min(1).max(50),
 });
 
+export const packageUpdateSchema = packageInputSchema.extend({
+  recipientPhone: z.string().trim().min(5).max(32).nullable().optional(),
+  senderName: z.string().trim().min(2).max(120).nullable().optional(),
+});
+
+export const batchTrackingUpdateSchema = z.object({
+  status: z.string().trim().min(2).max(80),
+  location: z.string().trim().min(2).max(120),
+  information: z.string().trim().min(2).max(500),
+});
+
 export type PackageInput = z.infer<typeof packageInputSchema>;
 
 export class WorkflowError extends Error {
@@ -47,6 +58,15 @@ export function assertCanEditPackage(
 
 export function calculateCharge(weightKg: number, pricePerKg: number) {
   return Math.round(weightKg * pricePerKg);
+}
+
+export function assertCanDeletePaymentHistory(state: PackageWorkflowState) {
+  if (!state.paidAt) {
+    throw new WorkflowError("Riwayat pembayaran paket ini tidak ditemukan.", 404);
+  }
+  if (state.collectedAt) {
+    throw new WorkflowError("Riwayat pembayaran tidak dapat dihapus setelah paket diambil.", 409);
+  }
 }
 
 export function assertCanApplyAction(state: PackageWorkflowState, action: PackageAction) {

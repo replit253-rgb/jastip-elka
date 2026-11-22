@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS package_events (
 
 CREATE INDEX IF NOT EXISTS package_events_package_idx ON package_events (package_id, created_at);
 
+CREATE TABLE IF NOT EXISTS package_tracking_updates (
+  id uuid PRIMARY KEY,
+  package_id uuid NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
+  status text NOT NULL CHECK (char_length(status) BETWEEN 2 AND 80),
+  location text NOT NULL CHECK (char_length(location) BETWEEN 2 AND 120),
+  information text NOT NULL CHECK (char_length(information) BETWEEN 2 AND 500),
+  updated_by uuid NOT NULL REFERENCES staff_users(id),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS package_tracking_updates_package_idx
+  ON package_tracking_updates (package_id, created_at);
+
 CREATE TABLE IF NOT EXISTS announcements (
   id uuid PRIMARY KEY,
   title text NOT NULL CHECK (char_length(title) BETWEEN 4 AND 120),

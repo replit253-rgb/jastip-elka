@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Download, Printer, RotateCcw, ScanLine } from "lucide-react";
+import { Download, Pencil, Printer, RotateCcw, ScanLine } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 
 import { PageHeading, PackageStatus } from "@/components/operations-dashboard";
 import { useStaff } from "@/components/operations-dashboard-context";
+import { PackageEditor, type ManagedPackage } from "@/components/operations-pages";
 import { downloadBarcodePng } from "@/lib/barcode";
 import { apiRequest, formatDate, formatRupiah, type PackageRecord } from "@/lib/operations-api";
 
@@ -25,18 +26,28 @@ type BatchSummary = {
 
 type BarcodeLibraryPageProps = {
   selectedBatchId?: string;
+  selectedPackageId?: string;
   onSelectBatch?: (batchId: string) => void;
+  onEditPackage?: (packageId: string) => void;
   onBackToBatches?: () => void;
+  onClosePackageEditor?: () => void;
 };
 
 export function BarcodeLibraryPage({
   selectedBatchId: routedBatchId,
+  selectedPackageId: routedPackageId,
   onSelectBatch,
+  onEditPackage,
   onBackToBatches,
+  onClosePackageEditor,
 }: BarcodeLibraryPageProps = {}) {
   const { role } = useStaff();
   const isOwner = role === "owner";
   const [localSelectedBatchId, setLocalSelectedBatchId] = useState("");
+  const [localEditingPackageId, setLocalEditingPackageId] = useState("");
+  const [editingPackage, setEditingPackage] = useState<ManagedPackage | null>(null);
+  const [editingLoading, setEditingLoading] = useState(false);
+  const [savedNotice, setSavedNotice] = useState("");
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [batchesLoading, setBatchesLoading] = useState(true);
   const [batchError, setBatchError] = useState("");
@@ -53,7 +64,36 @@ export function BarcodeLibraryPage({
   const [printOnlyIds, setPrintOnlyIds] = useState<string[] | null>(null);
   const [error, setError] = useState("");
   const selectedBatchId = routedBatchId ?? localSelectedBatchId;
+  const selectedPackageId = routedPackageId ?? localEditingPackageId;
   const selectedBatch = batches.find((batch) => batch.id === selectedBatchId);
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedPackageId) {
+      setEditingPackage(null);
+      setEditingLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setEditingLoading(true);
+    setEditingPackage(null);
+    setError("");
+    apiRequest<{ package: ManagedPackage }>(`/api/packages/${selectedPackageId}`)
+      .then(({ package: item }) => {
+        if (active) setEditingPackage(item);
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : "Data paket gagal dimuat.");
+      })
+      .finally(() => {
+        if (active) setEditingLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedPackageId, reloadKey]);
 
   useEffect(() => {
     let active = true;
@@ -251,6 +291,18 @@ export function BarcodeLibraryPage({
     }
   }
 
+  function editPackage(packageId: string) {
+    setSavedNotice("");
+    if (onEditPackage) onEditPackage(packageId);
+    else setLocalEditingPackageId(packageId);
+  }
+
+  function closePackageEditor() {
+    setSavedNotice("");
+    if (onClosePackageEditor) onClosePackageEditor();
+    else setLocalEditingPackageId("");
+  }
+
   return (
     <div className="ops-barcode-library">
       <PageHeading
@@ -316,7 +368,47 @@ export function BarcodeLibraryPage({
           {batchError || error}
         </p>
       )}
-      {!selectedBatchId ? (
+      {selectedPackageId ? (
+        <section className="ops-barcode-batch-detail">
+          <div className="ops-barcode-package-editor">
+            <div className="ops-barcode-batch-detail">
+              <div>
+                <p className="ops-eyebrow">EDIT DATA PAKET</p>
+                <h2>{editingPackage?.tracking_code ?? "Paket"}</h2>
+              </div>
+              <button
+                className="ops-button ops-button--outline"
+                type="button"
+                onClick={closePackageEditor}
+              >
+                Kembali ke barcode
+              </button>
+            </div>
+            {savedNotice && (
+              <p className="ops-message ops-message--success" role="status">
+                {savedNotice}
+              </p>
+            )}
+            {editingLoading ? (
+              <p className="ops-empty" aria-live="polite">
+                Memuat data paket...
+              </p>
+            ) : editingPackage ? (
+              <PackageEditor
+                item={editingPackage}
+                onCancel={closePackageEditor}
+                onSaved={(updated) => {
+                  setEditingPackage({ ...editingPackage, ...updated });
+                  setSavedNotice("Data paket berhasil diperbarui.");
+                  setReloadKey((key) => key + 1);
+                }}
+              />
+            ) : (
+              <p className="ops-empty">Paket tidak dapat diedit atau tidak ditemukan.</p>
+            )}
+          </div>
+        </section>
+      ) : !selectedBatchId ? (
         batchesLoading ? (
           <p className="ops-empty" aria-live="polite">
             Memuat batch...
@@ -473,6 +565,19 @@ export function BarcodeLibraryPage({
                         <RotateCcw size={15} aria-hidden="true" /> Pulihkan paket
                       </button>
                     )}
+                    {isOwner &&
+                      !item.archived_at &&
+                      !item.verified_at &&
+                      !item.paid_at &&
+                      !item.collected_at && (
+                        <button
+                          className="ops-button ops-button--quiet"
+                          type="button"
+                          onClick={() => editPackage(item.id)}
+                        >
+                          <Pencil size={15} aria-hidden="true" /> Edit data paket
+                        </button>
+                      )}
                   </div>
                 </article>
               ))}

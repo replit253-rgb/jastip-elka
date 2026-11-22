@@ -27,10 +27,13 @@ import {
   reviewSubmissionSchema,
 } from "./content-workflow.ts";
 import {
+  assertCanDeletePaymentHistory,
   assertCanApplyAction,
   assertCanEditPackage,
+  batchTrackingUpdateSchema,
   packageBatchSchema,
   packageInputSchema,
+  packageUpdateSchema,
   calculateCharge,
   WorkflowError,
   type PackageAction,
@@ -311,33 +314,80 @@ async function startServer() {
           return;
         }
 
-        const history = await pool.query<{ action: string; created_at: Date }>(
-          `SELECT action, created_at FROM package_events
-           WHERE package_id = $1 ORDER BY created_at ASC`,
-          [packageRow.id],
-        );
+        const [history, latestTrackingUpdate] = await Promise.all([
+          pool.query<{
+            action: string;
+            created_at: Date;
+            status: string | null;
+            location: string | null;
+            information: string | null;
+          }>(
+            `SELECT action, created_at, NULL::text AS status, NULL::text AS location,
+                NULL::text AS information
+             FROM package_events WHERE package_id = $1
+             UNION ALL
+             SELECT 'tracking' AS action, created_at, status, location, information
+             FROM package_tracking_updates WHERE package_id = $1
+             ORDER BY created_at ASC`,
+            [packageRow.id],
+          ),
+          pool.query<{
+            status: string;
+            location: string;
+            information: string;
+            created_at: Date;
+          }>(
+            `SELECT status, location, information, created_at
+             FROM package_tracking_updates
+             WHERE package_id = $1
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1`,
+            [packageRow.id],
+          ),
+        ]);
         const eventLabels: Record<string, string> = {
           created: "Paket diterima di Surabaya",
           verify: "Paket dikirim menuju Flores",
-          payment: "Posisi paket diperbarui",
+          payment: "Pembayaran dikonfirmasi",
           collect: "Paket berada di titik pengambilan",
         };
         const events = history.rows.map((item) => ({
-          label: eventLabels[item.action] ?? "Status paket diperbarui",
-          detail: new Intl.DateTimeFormat("id-ID", {
-            dateStyle: "medium",
-            timeStyle: "short",
-            timeZone: "Asia/Jakarta",
-          }).format(item.created_at),
+          label:
+            item.action === "tracking"
+              ? (item.status ?? "Status paket diperbarui")
+              : (eventLabels[item.action] ?? "Status paket diperbarui"),
+          detail: [
+            new Intl.DateTimeFormat("id-ID", {
+              dateStyle: "medium",
+              timeStyle: "short",
+              timeZone: "Asia/Jakarta",
+            }).format(item.created_at),
+            item.action === "tracking" ? item.location : null,
+            item.action === "tracking" ? item.information : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
         }));
-        const status = packageRow.collected_at
+        const latestUpdate = latestTrackingUpdate.rows[0];
+        const latestOperationalEventAt = history.rows.reduce<Date | null>(
+          (latest, item) =>
+            item.action !== "tracking" && (!latest || item.created_at.getTime() > latest.getTime())
+              ? item.created_at
+              : latest,
+          null,
+        );
+        const ownerUpdateIsCurrent =
+          latestUpdate !== undefined &&
+          (!latestOperationalEventAt ||
+            latestUpdate.created_at.getTime() >= latestOperationalEventAt.getTime());
+        const systemStatus = packageRow.collected_at
           ? "Sudah diambil"
           : packageRow.paid_at
             ? "Paket sudah tiba di tujuan"
             : packageRow.verified_at
               ? "Paket dalam perjalanan menuju Flores"
               : "Paket diterima di Surabaya";
-        const location = packageRow.collected_at
+        const systemLocation = packageRow.collected_at
           ? `Paket telah diambil di titik ${packageRow.destination}.`
           : packageRow.paid_at
             ? `Paket berada di titik pengambilan ${packageRow.destination}.`
@@ -348,9 +398,11 @@ async function startServer() {
         response.json({
           tracking: {
             code: packageRow.tracking_code,
-            status,
+            status: ownerUpdateIsCurrent ? latestUpdate.status : systemStatus,
             destination: packageRow.destination,
-            location,
+            location: ownerUpdateIsCurrent
+              ? `${latestUpdate.location} — ${latestUpdate.information}`
+              : systemLocation,
             events:
               events.length > 0
                 ? events
@@ -598,6 +650,58 @@ async function startServer() {
       response.json({ batches: result.rows });
     } catch (error) {
       next(error);
+    }
+  });
+
+  app.post("/api/batches/:id/tracking", requireOwner, async (request, response, next) => {
+    const batchId = z.string().uuid().parse(request.params["id"]);
+    const input = batchTrackingUpdateSchema.parse(request.body);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const batch = await client.query<{ id: string }>(
+        "SELECT id FROM package_batches WHERE id = $1 FOR UPDATE",
+        [batchId],
+      );
+      if (!batch.rows[0]) throw new WorkflowError("Batch tidak ditemukan.", 404);
+      const packages = await client.query<{ id: string }>(
+        `SELECT id FROM packages
+         WHERE batch_id = $1 AND archived_at IS NULL
+         ORDER BY created_at, id
+         FOR UPDATE`,
+        [batchId],
+      );
+      if (packages.rows.length === 0) {
+        throw new WorkflowError("Batch ini belum memiliki paket aktif untuk diperbarui.", 409);
+      }
+
+      for (const item of packages.rows) {
+        await client.query(
+          `INSERT INTO package_tracking_updates
+             (id, package_id, status, location, information, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            randomUUID(),
+            item.id,
+            input.status,
+            input.location,
+            input.information,
+            request.staffUser!.id,
+          ],
+        );
+      }
+
+      await client.query("COMMIT");
+      response.status(201).json({
+        batchId,
+        status: input.status,
+        updatedPackages: packages.rows.length,
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
     }
   });
 
@@ -1119,6 +1223,27 @@ async function startServer() {
     }
   });
 
+  app.get("/api/packages/:id", requireOwner, async (request, response, next) => {
+    try {
+      const id = z.string().uuid().parse(request.params["id"]);
+      const result = await pool.query(
+        `SELECT id, batch_id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
+          description, pcs, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
+          archived_at, created_at
+         FROM packages
+         WHERE id = $1 AND archived_at IS NULL`,
+        [id],
+      );
+      const item = result.rows[0];
+      if (!item) throw new WorkflowError("Paket tidak ditemukan.", 404);
+      response.json({
+        package: { ...item, barcodeToken: createBarcodeToken(item.id, barcodeSecret) },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/api/packages/bulk", async (request, response, next) => {
     const { batchId, packages: inputs } = z
       .object({ batchId: z.string().uuid(), ...packageBatchSchema.shape })
@@ -1268,7 +1393,7 @@ async function startServer() {
   });
 
   app.put("/api/packages/:id", requireOwner, async (request, response, next) => {
-    const input = packageInputSchema.parse(request.body);
+    const input = packageUpdateSchema.parse(request.body);
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -1276,12 +1401,15 @@ async function startServer() {
         id: string;
         batch_id: string | null;
         price_per_kg: string | number;
+        recipient_phone: string | null;
+        sender_name: string | null;
         verified_at: string | null;
         paid_at: string | null;
         collected_at: string | null;
         archived_at: string | null;
       }>(
-        `SELECT id, batch_id, price_per_kg, verified_at, paid_at, collected_at, archived_at
+        `SELECT id, batch_id, price_per_kg, recipient_phone, sender_name,
+           verified_at, paid_at, collected_at, archived_at
          FROM packages WHERE id = $1 FOR UPDATE`,
         [request.params["id"]],
       );
@@ -1306,7 +1434,7 @@ async function startServer() {
       const updated = await client.query(
         `UPDATE packages
          SET recipient_name = $2, destination = $3, description = $4, pcs = $5,
-             weight_kg = $6, total_price = $7
+             weight_kg = $6, total_price = $7, recipient_phone = $8, sender_name = $9
          WHERE id = $1
          RETURNING id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
            batch_id, description, pcs, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
@@ -1319,6 +1447,8 @@ async function startServer() {
           input.pcs,
           input.weightKg,
           totalPrice,
+          input.recipientPhone === undefined ? existing.recipient_phone : input.recipientPhone,
+          input.senderName === undefined ? existing.sender_name : input.senderName,
         ],
       );
       if (existing.batch_id) {
@@ -1456,6 +1586,40 @@ async function startServer() {
       response.json({ packages: result.rows });
     } catch (error) {
       next(error);
+    }
+  });
+
+  app.delete("/api/payments/:packageId", requireOwner, async (request, response, next) => {
+    const packageId = z.string().uuid().parse(request.params["packageId"]);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<{
+        paid_at: Date | null;
+        collected_at: Date | null;
+      }>("SELECT paid_at, collected_at FROM packages WHERE id = $1 FOR UPDATE", [packageId]);
+      const packageRow = result.rows[0];
+      if (!packageRow) throw new WorkflowError("Paket tidak ditemukan.", 404);
+      assertCanDeletePaymentHistory({
+        verifiedAt: null,
+        paidAt: packageRow.paid_at,
+        collectedAt: packageRow.collected_at,
+      });
+
+      await client.query(
+        "DELETE FROM package_events WHERE package_id = $1 AND action = 'payment'",
+        [packageId],
+      );
+      await client.query("UPDATE packages SET paid_at = NULL, paid_by = NULL WHERE id = $1", [
+        packageId,
+      ]);
+      await client.query("COMMIT");
+      response.status(204).end();
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
     }
   });
 
