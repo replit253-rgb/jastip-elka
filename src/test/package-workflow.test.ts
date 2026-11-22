@@ -5,6 +5,7 @@ import {
   assertCanApplyAction,
   calculateCharge,
   packageBatchSchema,
+  packageInputSchema,
   WorkflowError,
   type PackageWorkflowState,
 } from "../../api/package-workflow";
@@ -80,14 +81,28 @@ describe("package workflow", () => {
   it("calculates package charges using the saved per-kilogram rate", () => {
     expect(calculateCharge(1, 8000)).toBe(8000);
     expect(calculateCharge(1.25, 8000)).toBe(10000);
+    expect(calculateCharge(3, 8000)).toBe(24000);
+  });
+
+  it("stores PCS independently from the Excel weight-based price calculation", () => {
+    const parsed = packageInputSchema.parse({
+      recipientName: "Santi Endu",
+      destination: "Bajawa",
+      pcs: 12,
+      weightKg: 3,
+    });
+
+    expect(parsed.pcs).toBe(12);
+    expect(calculateCharge(parsed.weightKg, 8000)).toBe(24000);
+    expect(packageInputSchema.parse({ ...parsed, pcs: undefined }).pcs).toBe(1);
+    expect(packageInputSchema.safeParse({ ...parsed, pcs: 0 }).success).toBe(false);
   });
 
   it("accepts package batches up to 50 entries and rejects larger batches", () => {
     const packageInput = {
       recipientName: "Dina",
-      recipientPhone: "08123456789",
-      senderName: "Rani",
       destination: "Bajawa",
+      pcs: 3,
       weightKg: 1.25,
     };
 

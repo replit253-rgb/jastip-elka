@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
 
-import { parseBatchWorkbook } from "@/lib/batch-excel";
+import { createBatchWorkbookTemplate, parseBatchWorkbook } from "@/lib/batch-excel";
 
 function workbookBuffer(sheetName: string, rows: unknown[][]) {
   const workbook = XLSX.utils.book_new();
@@ -10,6 +10,24 @@ function workbookBuffer(sheetName: string, rows: unknown[][]) {
 }
 
 describe("batch Excel parser", () => {
+  it("creates a template with the destination sheets and matching column headers", () => {
+    const workbook = XLSX.read(createBatchWorkbookTemplate(), { type: "array" });
+
+    expect(workbook.SheetNames).toEqual(["BJW", "MLZ", "AIM"]);
+    for (const sheetName of workbook.SheetNames) {
+      const worksheet = workbook.Sheets[sheetName];
+      if (!worksheet) throw new Error(`Missing worksheet ${sheetName}`);
+      expect(XLSX.utils.sheet_to_json(worksheet, { header: 1 })[3]).toEqual([
+        "NO.",
+        "NAMA",
+        "PCS",
+        "BERAT",
+        "HARGA",
+        "KET.",
+      ]);
+    }
+  });
+
   it("parses BATCH 34 from the BJW sheet and ignores the total row", () => {
     const data = workbookBuffer("BJW", [
       ["ELKANA JASTIP BAJAWA"],
@@ -70,5 +88,21 @@ describe("batch Excel parser", () => {
     ]);
 
     expect(() => parseBatchWorkbook(data, "Bajawa")).toThrow("Tidak ada data penerima");
+  });
+
+  it("does not import the first sheet when the selected destination sheet is missing", () => {
+    const workbook = XLSX.read(
+      workbookBuffer("BJW", [
+        ["ELKANA JASTIP BAJAWA"],
+        ["BATCH 34"],
+        ["NO.", "NAMA", "PCS", "BERAT", "HARGA", "KET."],
+        [1, "Santi Endu", 12, 3, 24000, ""],
+      ]),
+      { type: "array" },
+    );
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([]), "MLZ");
+    const data = XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+
+    expect(() => parseBatchWorkbook(data, "Aimere")).toThrow("Sheet tujuan Aimere tidak ditemukan");
   });
 });

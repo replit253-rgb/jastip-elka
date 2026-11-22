@@ -237,13 +237,26 @@ type PublicBatch = {
   title: string;
   destination: string;
   created_at: string;
-  items: { row_number: number; name: string; pcs: number }[];
+};
+
+type PublicBatchItem = {
+  row_number: number;
+  name: string;
+  pcs: number;
 };
 
 export function BatchListSection() {
   const [batches, setBatches] = useState<PublicBatch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<PublicBatchItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [error, setError] = useState("");
   const [destination, setDestination] = useState("Bajawa");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [hasPrevious, setHasPrevious] = useState(false);
+  const [hasNext, setHasNext] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -251,8 +264,8 @@ export function BatchListSection() {
       .then((result) => {
         if (active) setBatches(result.batches);
       })
-      .catch(() => {
-        if (active) setBatches([]);
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : "Daftar batch gagal dimuat.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -263,6 +276,53 @@ export function BatchListSection() {
   }, []);
 
   const visibleBatches = batches.filter((batch) => batch.destination === destination);
+  const activeBatch = visibleBatches[0];
+  const activeBatchId = activeBatch?.id;
+
+  useEffect(() => {
+    let active = true;
+    if (!activeBatchId) {
+      setItems([]);
+      setTotal(0);
+      setHasPrevious(false);
+      setHasNext(false);
+      return;
+    }
+
+    setItemsLoading(true);
+    setError("");
+    const query = new URLSearchParams({
+      search: search.trim(),
+      limit: "10",
+      offset: String(page * 10),
+    });
+    apiRequest<{
+      items: PublicBatchItem[];
+      total: number;
+      hasPrevious: boolean;
+      hasNext: boolean;
+    }>(`/api/public/batches/${activeBatchId}/items?${query}`)
+      .then((result) => {
+        if (!active) return;
+        setItems(result.items);
+        setTotal(result.total);
+        setHasPrevious(result.hasPrevious);
+        setHasNext(result.hasNext);
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setItems([]);
+          setError(cause instanceof Error ? cause.message : "Daftar penerima gagal dimuat.");
+        }
+      })
+      .finally(() => {
+        if (active) setItemsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeBatchId, page, search]);
 
   return (
     <section className="section batch-list-section" id="daftar-batch">
@@ -280,7 +340,10 @@ export function BatchListSection() {
               role="tab"
               aria-selected={destination === item}
               className={destination === item ? "is-active" : ""}
-              onClick={() => setDestination(item)}
+              onClick={() => {
+                setDestination(item);
+                setPage(0);
+              }}
             >
               {item}
             </button>
@@ -288,13 +351,37 @@ export function BatchListSection() {
         </div>
         {loading ? (
           <p className="batch-list__state">Memuat daftar batch...</p>
-        ) : visibleBatches.length ? (
+        ) : error && !activeBatch ? (
+          <p className="batch-list__state" role="alert">
+            {error}
+          </p>
+        ) : activeBatch ? (
           <div className="batch-list__groups">
-            {visibleBatches.map((batch) => (
-              <article className="batch-list__card" key={batch.id}>
-                <h3>
-                  LIST PAKET {batch.destination.toUpperCase()} {batch.title.toUpperCase()}
-                </h3>
+            <article className="batch-list__card" key={activeBatch.id}>
+              <h3>
+                LIST PAKET {activeBatch.destination.toUpperCase()} {activeBatch.title.toUpperCase()}
+              </h3>
+              <label className="batch-list__search">
+                <Search size={17} aria-hidden="true" />
+                <span className="sr-only">Cari nama penerima</span>
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(0);
+                  }}
+                  placeholder="Cari nama penerima..."
+                />
+              </label>
+              {error && (
+                <p className="batch-list__state" role="alert">
+                  {error}
+                </p>
+              )}
+              {itemsLoading ? (
+                <p className="batch-list__state">Memuat daftar penerima...</p>
+              ) : (
                 <div className="batch-list__table-wrap">
                   <table className="batch-list__table">
                     <thead>
@@ -305,18 +392,48 @@ export function BatchListSection() {
                       </tr>
                     </thead>
                     <tbody>
-                      {batch.items.map((item) => (
-                        <tr key={`${batch.id}-${item.row_number}`}>
-                          <td>{item.row_number}</td>
+                      {items.map((item, index) => (
+                        <tr key={`${activeBatch.id}-${item.row_number}-${index}`}>
+                          <td>{page * 10 + index + 1}</td>
                           <td>{item.name}</td>
                           <td>{item.pcs}</td>
                         </tr>
                       ))}
+                      {items.length === 0 && (
+                        <tr>
+                          <td colSpan={3}>
+                            {search.trim()
+                              ? "Tidak ada nama penerima yang cocok."
+                              : "Belum ada penerima di batch ini."}
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
-              </article>
-            ))}
+              )}
+              <div className="batch-list__pagination">
+                <span>
+                  {total === 0 ? 0 : page * 10 + 1}–{Math.min((page + 1) * 10, total)} dari {total}
+                </span>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setPage((current) => Math.max(0, current - 1))}
+                    disabled={!hasPrevious || itemsLoading}
+                  >
+                    Sebelumnya
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPage((current) => current + 1)}
+                    disabled={!hasNext || itemsLoading}
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              </div>
+            </article>
           </div>
         ) : (
           <p className="batch-list__state">Belum ada daftar paket untuk tujuan {destination}.</p>

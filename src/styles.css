@@ -2324,6 +2324,36 @@ html {
   margin-bottom: 0;
 }
 
+.ops-batch-create {
+  grid-column: 1 / -1;
+}
+
+.ops-batch-feature {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.ops-batch-feature.is-active {
+  border-color: var(--brand-gold);
+  background: color-mix(in oklab, var(--brand-gold) 18%, white);
+  color: var(--brand-burgundy);
+}
+
+.ops-batch-feature:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .ops-batch-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -3809,6 +3839,61 @@ html {
   margin-bottom: 1rem;
   color: var(--brand-burgundy);
   font-size: 1.15rem;
+}
+
+.batch-list__search {
+  display: flex;
+  max-width: 460px;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted-foreground);
+}
+
+.batch-list__search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--brand-ink);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.batch-list__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-top: 0.9rem;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.batch-list__pagination > div {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.batch-list__pagination button {
+  min-height: 36px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--brand-ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.batch-list__pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .batch-list__table-wrap {

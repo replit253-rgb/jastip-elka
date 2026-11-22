@@ -17,6 +17,39 @@ export type ParsedBatch = {
   items: BatchItem[];
 };
 
+export function createBatchWorkbookTemplate() {
+  const workbook = XLSX.utils.book_new();
+  const sheets: Array<{ name: string; destination: string }> = [
+    { name: "BJW", destination: "BAJAWA" },
+    { name: "MLZ", destination: "MALANUZA" },
+    { name: "AIM", destination: "AIMERE" },
+  ];
+
+  for (const sheet of sheets) {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      [`ELKANA JASTIP ${sheet.destination}`],
+      ["BATCH 00"],
+      [],
+      ["NO.", "NAMA", "PCS", "BERAT", "HARGA", "KET."],
+    ]);
+    worksheet["!cols"] = [
+      { wch: 8 },
+      { wch: 28 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 28 },
+    ];
+    worksheet["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+    ];
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
+  }
+
+  return XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+}
+
 function numberValue(value: unknown) {
   if (typeof value === "number") return value;
   const parsed = Number(
@@ -32,15 +65,15 @@ export function parseBatchWorkbook(data: ArrayBuffer, destination: BatchDestinat
   const aliases: Record<BatchDestination, string[]> = {
     Bajawa: ["BJW", "BAJAWA"],
     Malanuza: ["MLZ", "MALANUZA"],
-    Aimere: ["AIMERE"],
+    Aimere: ["AIM", "AIMERE"],
   };
   const sheetName =
     workbook.SheetNames.find((name) => {
-      const upperName = name.toUpperCase();
-      return aliases[destination].some((alias) => upperName.includes(alias));
-    }) ?? workbook.SheetNames[0];
+      const sheetTokens = name.toUpperCase().split(/[^A-Z0-9]+/);
+      return aliases[destination].some((alias) => sheetTokens.includes(alias));
+    }) ?? (workbook.SheetNames.length === 1 ? workbook.SheetNames[0] : undefined);
 
-  if (!sheetName) throw new Error("File Excel tidak memiliki sheet.");
+  if (!sheetName) throw new Error(`Sheet tujuan ${destination} tidak ditemukan pada file Excel.`);
   const worksheet = workbook.Sheets[sheetName];
   if (!worksheet) throw new Error("Sheet tujuan tidak dapat dibaca.");
 

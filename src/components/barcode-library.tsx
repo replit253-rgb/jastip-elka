@@ -289,6 +289,10 @@ export function BarcodeLibraryPage() {
                   <dd>{item.destination}</dd>
                 </div>
                 <div>
+                  <dt>PCS</dt>
+                  <dd>{item.pcs}</dd>
+                </div>
+                <div>
                   <dt>Berat</dt>
                   <dd>{Number(item.weight_kg).toLocaleString("id-ID")} kg</dd>
                 </div>

@@ -30,10 +30,11 @@ CREATE TABLE IF NOT EXISTS packages (
   id uuid PRIMARY KEY,
   tracking_code text NOT NULL UNIQUE,
   recipient_name text NOT NULL,
-  recipient_phone text NOT NULL,
-  sender_name text NOT NULL,
+  recipient_phone text,
+  sender_name text,
   destination text NOT NULL CHECK (destination IN ('Bajawa', 'Malanuza', 'Aimere')),
   description text NOT NULL DEFAULT '',
+  pcs integer NOT NULL DEFAULT 1 CHECK (pcs > 0),
   weight_kg numeric(7, 2) NOT NULL CHECK (weight_kg > 0),
   price_per_kg integer NOT NULL CHECK (price_per_kg > 0),
   total_price integer NOT NULL CHECK (total_price >= 0),
@@ -48,6 +49,10 @@ CREATE TABLE IF NOT EXISTS packages (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE packages ALTER COLUMN recipient_phone DROP NOT NULL;
+ALTER TABLE packages ALTER COLUMN sender_name DROP NOT NULL;
+ALTER TABLE packages
+  ADD COLUMN IF NOT EXISTS pcs integer NOT NULL DEFAULT 1 CHECK (pcs > 0);
 ALTER TABLE packages ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 ALTER TABLE packages
   ADD COLUMN IF NOT EXISTS archived_by uuid REFERENCES staff_users(id);
@@ -83,14 +88,27 @@ CREATE TABLE IF NOT EXISTS package_batches (
   id uuid PRIMARY KEY,
   title text NOT NULL CHECK (char_length(title) BETWEEN 2 AND 80),
   destination text NOT NULL CHECK (destination IN ('Bajawa', 'Malanuza', 'Aimere')),
+  is_featured boolean NOT NULL DEFAULT false,
   created_by uuid NOT NULL REFERENCES staff_users(id),
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (title, destination)
 );
 
+ALTER TABLE package_batches
+  ADD COLUMN IF NOT EXISTS is_featured boolean NOT NULL DEFAULT false;
+
+CREATE UNIQUE INDEX IF NOT EXISTS package_batches_featured_destination_idx
+  ON package_batches (destination) WHERE is_featured = true;
+
+ALTER TABLE packages
+  ADD COLUMN IF NOT EXISTS batch_id uuid REFERENCES package_batches(id);
+
+CREATE INDEX IF NOT EXISTS packages_batch_idx ON packages (batch_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS package_batch_items (
   id uuid PRIMARY KEY,
   batch_id uuid NOT NULL REFERENCES package_batches(id) ON DELETE CASCADE,
+  package_id uuid REFERENCES packages(id) ON DELETE SET NULL,
   row_number integer NOT NULL CHECK (row_number >= 1),
   name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 160),
   pcs integer NOT NULL DEFAULT 0 CHECK (pcs >= 0),
@@ -98,6 +116,12 @@ CREATE TABLE IF NOT EXISTS package_batch_items (
   price integer NOT NULL DEFAULT 0 CHECK (price >= 0),
   note text NOT NULL DEFAULT ''
 );
+
+ALTER TABLE package_batch_items
+  ADD COLUMN IF NOT EXISTS package_id uuid REFERENCES packages(id) ON DELETE SET NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS package_batch_items_package_idx
+  ON package_batch_items (package_id) WHERE package_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS package_batch_items_batch_idx
   ON package_batch_items (batch_id, row_number);

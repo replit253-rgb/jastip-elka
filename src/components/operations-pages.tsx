@@ -67,6 +67,7 @@ function PackageTable({
           <tr>
             <th>Nomor paket</th>
             <th>Penerima</th>
+            <th>PCS</th>
             <th>Tujuan</th>
             <th>Berat</th>
             <th>Tagihan</th>
@@ -81,6 +82,7 @@ function PackageTable({
                 <strong className="ops-code">{item.tracking_code}</strong>
               </td>
               <td>{item.recipient_name}</td>
+              <td>{item.pcs}</td>
               <td>{item.destination}</td>
               <td>{Number(item.weight_kg).toLocaleString("id-ID")} kg</td>
               <td>{formatRupiah(item.total_price)}</td>
@@ -310,6 +312,7 @@ function OwnerPackageManager({ onChanged }: { onChanged: () => void }) {
               <tr>
                 <th>Nomor paket</th>
                 <th>Penerima</th>
+                <th>PCS</th>
                 <th>Tujuan</th>
                 <th>Berat</th>
                 <th>Tagihan</th>
@@ -326,6 +329,7 @@ function OwnerPackageManager({ onChanged }: { onChanged: () => void }) {
                       <strong className="ops-code">{item.tracking_code}</strong>
                     </td>
                     <td>{item.recipient_name}</td>
+                    <td>{item.pcs}</td>
                     <td>{item.destination}</td>
                     <td>{Number(item.weight_kg).toLocaleString("id-ID")} kg</td>
                     <td>{formatRupiah(item.total_price)}</td>
@@ -404,6 +408,7 @@ function PackageEditor({
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [weightKg, setWeightKg] = useState(String(item.weight_kg));
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -415,10 +420,9 @@ function PackageEditor({
         method: "PUT",
         body: JSON.stringify({
           recipientName: formData.get("recipientName"),
-          recipientPhone: formData.get("recipientPhone"),
-          senderName: formData.get("senderName"),
           destination: formData.get("destination"),
           description: formData.get("description"),
+          pcs: Number(formData.get("pcs")),
           weightKg: Number(formData.get("weightKg")),
         }),
       });
@@ -434,7 +438,10 @@ function PackageEditor({
     <form className="ops-form ops-package-editor" onSubmit={submit}>
       <div className="ops-form__intro">
         <h2>Edit paket {item.tracking_code}</h2>
-        <p>Tarif per kilogram tetap mengikuti tarif saat paket dibuat.</p>
+        <p>
+          Tagihan dihitung dari berat × tarif paket saat dibuat (
+          {formatRupiah(item.price_per_kg ?? 8000)}/kg).
+        </p>
       </div>
       <div className="ops-package-editor__barcode">
         <QRCodeCanvas
@@ -476,33 +483,31 @@ function PackageEditor({
           />
         </label>
         <label>
-          Nomor telepon penerima
-          <input
-            name="recipientPhone"
-            type="tel"
-            defaultValue={item.recipient_phone ?? ""}
-            required
-            minLength={5}
-            maxLength={32}
-          />
-        </label>
-        <label>
-          Nama pengirim
-          <input
-            name="senderName"
-            defaultValue={item.sender_name ?? ""}
-            required
-            minLength={2}
-            maxLength={120}
-          />
-        </label>
-        <label>
           Tujuan pengambilan
-          <select name="destination" defaultValue={item.destination}>
-            <option value="Bajawa">Bajawa</option>
-            <option value="Malanuza">Malanuza</option>
-            <option value="Aimere">Aimere</option>
-          </select>
+          {item.batch_id ? (
+            <>
+              <input value={item.destination} readOnly />
+              <input type="hidden" name="destination" value={item.destination} />
+            </>
+          ) : (
+            <select name="destination" defaultValue={item.destination}>
+              <option value="Bajawa">Bajawa</option>
+              <option value="Malanuza">Malanuza</option>
+              <option value="Aimere">Aimere</option>
+            </select>
+          )}
+        </label>
+        <label>
+          PCS
+          <input
+            name="pcs"
+            type="number"
+            step="1"
+            min="1"
+            max="10000"
+            defaultValue={item.pcs}
+            required
+          />
         </label>
         <label>
           Berat paket (kg)
@@ -513,7 +518,15 @@ function PackageEditor({
             min="0.01"
             max="500"
             defaultValue={item.weight_kg}
+            onChange={(event) => setWeightKg(event.target.value)}
             required
+          />
+        </label>
+        <label>
+          Harga otomatis
+          <input
+            value={formatRupiah(Math.round(Number(weightKg) * (item.price_per_kg ?? 8000)))}
+            readOnly
           />
         </label>
         <label>
@@ -541,20 +554,31 @@ function PackageEditor({
 type PackageDraft = {
   id: string;
   recipientName: string;
-  recipientPhone: string;
-  senderName: string;
   destination: "Bajawa" | "Malanuza" | "Aimere";
   description: string;
+  pcs: number;
   weightKg: number;
+};
+
+type PackageBatchOption = {
+  id: string;
+  title: string;
+  destination: "Bajawa" | "Malanuza" | "Aimere";
+  is_featured: boolean;
 };
 
 export function NewPackagePage() {
   const [pricePerKg, setPricePerKg] = useState(8000);
+  const [weightKg, setWeightKg] = useState("");
   const [drafts, setDrafts] = useState<PackageDraft[]>([]);
+  const [batches, setBatches] = useState<PackageBatchOption[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [batchesLoading, setBatchesLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const recipientRef = useRef<HTMLInputElement>(null);
+  const selectedBatch = batches.find((batch) => batch.id === selectedBatchId);
 
   useEffect(() => {
     apiRequest<{ pricePerKg: number }>("/api/settings/price")
@@ -562,6 +586,15 @@ export function NewPackagePage() {
       .catch((cause: unknown) =>
         setError(cause instanceof Error ? cause.message : "Tarif aktif gagal dimuat."),
       );
+    apiRequest<{ batches: PackageBatchOption[] }>("/api/batches")
+      .then(({ batches: results }) => {
+        setBatches(results);
+        setSelectedBatchId("");
+      })
+      .catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "Daftar batch gagal dimuat."),
+      )
+      .finally(() => setBatchesLoading(false));
   }, []);
 
   function addToQueue(event: FormEvent<HTMLFormElement>) {
@@ -570,6 +603,10 @@ export function NewPackagePage() {
     const formData = new FormData(form);
     setError("");
     setSuccess("");
+    if (!selectedBatch) {
+      setError("Buat dan pilih batch pengiriman sebelum memasukkan paket.");
+      return;
+    }
     if (drafts.length >= 50) {
       setError("Satu kali penyimpanan maksimal 50 paket.");
       return;
@@ -579,19 +616,23 @@ export function NewPackagePage() {
       {
         id: crypto.randomUUID(),
         recipientName: String(formData.get("recipientName")),
-        recipientPhone: String(formData.get("recipientPhone")),
-        senderName: String(formData.get("senderName")),
-        destination: String(formData.get("destination")) as PackageDraft["destination"],
+        destination: selectedBatch.destination,
         description: String(formData.get("description") ?? ""),
+        pcs: Number(formData.get("pcs")),
         weightKg: Number(formData.get("weightKg")),
       },
     ]);
     form.reset();
+    setWeightKg("");
     recipientRef.current?.focus();
   }
 
   async function saveAll() {
     if (drafts.length === 0) return;
+    if (!selectedBatch) {
+      setError("Pilih batch pengiriman sebelum menyimpan paket.");
+      return;
+    }
     setError("");
     setSuccess("");
     setSaving(true);
@@ -601,6 +642,7 @@ export function NewPackagePage() {
       }>("/api/packages/bulk", {
         method: "POST",
         body: JSON.stringify({
+          batchId: selectedBatch.id,
           packages: drafts.map(({ id: _id, ...item }) => item),
         }),
       });
@@ -618,7 +660,7 @@ export function NewPackagePage() {
       <PageHeading
         eyebrow="REGISTRASI PAKET"
         title="Input paket"
-        description="Tambahkan beberapa paket ke antrean, lalu simpan semuanya sekaligus dengan barcode unik."
+        description="Pilih batch pengiriman terlebih dahulu. Paket dalam antrean akan disimpan ke batch tersebut."
       />
       <ErrorMessage>{error}</ErrorMessage>
       {success && (
@@ -630,151 +672,196 @@ export function NewPackagePage() {
           </Link>
         </p>
       )}
-      <form className="ops-form ops-batch-form" onSubmit={addToQueue}>
-        <div className="ops-form__intro">
-          <h2>Data pengiriman</h2>
-          <p>Tarif aktif {formatRupiah(pricePerKg)} per kilogram.</p>
-        </div>
-        <div className="ops-form__grid">
-          <label>
-            Nama penerima
-            <input
-              ref={recipientRef}
-              name="recipientName"
-              autoComplete="name"
-              required
-              minLength={2}
-              maxLength={120}
-            />
-          </label>
-          <label>
-            Nomor telepon penerima
-            <input
-              name="recipientPhone"
-              type="tel"
-              autoComplete="tel"
-              required
-              minLength={5}
-              maxLength={32}
-            />
-          </label>
-          <label>
-            Nama pengirim
-            <input name="senderName" required minLength={2} maxLength={120} />
-          </label>
-          <label>
-            Tujuan pengambilan
-            <select name="destination" defaultValue="Bajawa">
-              <option value="Bajawa">Bajawa</option>
-              <option value="Malanuza">Malanuza</option>
-              <option value="Aimere">Aimere</option>
-            </select>
-          </label>
-          <label>
-            Berat paket (kg)
-            <input name="weightKg" type="number" step="0.01" min="0.01" max="500" required />
-          </label>
-          <label>
-            Keterangan barang <span className="ops-optional">opsional</span>
-            <input name="description" maxLength={250} placeholder="Contoh: kardus pakaian" />
-          </label>
-        </div>
-        <div className="ops-form__note">
-          <PackageCheck size={17} aria-hidden="true" />
-          <span>
-            Tagihan dihitung otomatis dan tarif paket tetap mengikuti tarif saat didaftarkan.
-          </span>
-        </div>
-        <button
-          className="ops-button ops-button--primary"
-          type="submit"
-          disabled={saving || drafts.length >= 50}
-        >
-          Tambahkan paket berikutnya
-          <ArrowRight size={17} aria-hidden="true" />
-        </button>
-      </form>
-
-      <section className="ops-section ops-batch-queue" aria-labelledby="package-queue-title">
-        <div className="ops-section__heading">
-          <div>
-            <p className="ops-eyebrow">ANTREAN SIMPAN</p>
-            <h2 id="package-queue-title">Paket berikutnya</h2>
-          </div>
-          <span className="ops-content-count">{drafts.length} / 50 paket</span>
-        </div>
-        {drafts.length === 0 ? (
-          <p className="ops-empty">
-            Belum ada paket di antrean. Isi formulir lalu tambahkan paket.
-          </p>
-        ) : (
-          <>
-            <div className="ops-table-wrap">
-              <table className="ops-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Penerima</th>
-                    <th>Tujuan</th>
-                    <th>Berat</th>
-                    <th>Estimasi tagihan</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {drafts.map((draft, index) => (
-                    <tr key={draft.id}>
-                      <td>{index + 1}</td>
-                      <td>
-                        <strong>{draft.recipientName}</strong>
-                      </td>
-                      <td>{draft.destination}</td>
-                      <td>{draft.weightKg.toLocaleString("id-ID")} kg</td>
-                      <td>{formatRupiah(Math.round(draft.weightKg * pricePerKg))}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="ops-icon-button"
-                          onClick={() =>
-                            setDrafts((current) => current.filter((item) => item.id !== draft.id))
-                          }
-                          aria-label={`Hapus ${draft.recipientName} dari antrean`}
-                          disabled={saving}
-                        >
-                          <X size={16} aria-hidden="true" />
-                        </button>
-                      </td>
-                    </tr>
+      {batchesLoading ? (
+        <LoadingLine />
+      ) : batches.length === 0 ? (
+        <section className="ops-message ops-message--error" role="status">
+          Belum ada batch pengiriman.{" "}
+          <Link className="ops-text-link" to="/dashboard/batch">
+            Buat batch terlebih dahulu <ArrowRight size={14} aria-hidden="true" />
+          </Link>
+        </section>
+      ) : (
+        <>
+          <form className="ops-form ops-batch-form" onSubmit={addToQueue}>
+            <div className="ops-form__intro">
+              <h2>Data pengiriman</h2>
+              <p>Tarif aktif {formatRupiah(pricePerKg)} per kilogram.</p>
+            </div>
+            <div className="ops-form__grid">
+              <label>
+                Batch pengiriman
+                <select
+                  value={selectedBatchId}
+                  onChange={(event) => {
+                    setSelectedBatchId(event.target.value);
+                    setDrafts([]);
+                  }}
+                  disabled={drafts.length > 0 || saving}
+                  required
+                >
+                  <option value="" disabled>
+                    Pilih batch pengiriman
+                  </option>
+                  {batches.map((batch) => (
+                    <option key={batch.id} value={batch.id}>
+                      {batch.title} — {batch.destination}
+                    </option>
                   ))}
-                </tbody>
-              </table>
+                </select>
+              </label>
+              <label>
+                Nama penerima
+                <input
+                  ref={recipientRef}
+                  name="recipientName"
+                  autoComplete="name"
+                  required
+                  minLength={2}
+                  maxLength={120}
+                />
+              </label>
+              <label>
+                PCS
+                <input name="pcs" type="number" step="1" min="1" max="10000" required />
+              </label>
+              <label>
+                Tujuan pengambilan
+                <input value={selectedBatch?.destination ?? ""} readOnly />
+              </label>
+              <label>
+                Berat paket (kg)
+                <input
+                  name="weightKg"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max="500"
+                  value={weightKg}
+                  onChange={(event) => setWeightKg(event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                Harga otomatis
+                <input
+                  value={formatRupiah(Math.round((Number(weightKg) || 0) * pricePerKg))}
+                  readOnly
+                />
+              </label>
+              <label>
+                Keterangan barang <span className="ops-optional">opsional</span>
+                <input name="description" maxLength={250} placeholder="Contoh: kardus pakaian" />
+              </label>
             </div>
-            <div className="ops-batch-queue__footer">
-              <p>
-                Total estimasi{" "}
-                <strong>
-                  {formatRupiah(
-                    drafts.reduce((sum, draft) => sum + Math.round(draft.weightKg * pricePerKg), 0),
-                  )}
-                </strong>
+            <div className="ops-form__note">
+              <PackageCheck size={17} aria-hidden="true" />
+              <span>
+                Harga dihitung seperti di Excel: berat × tarif/kg. PCS hanya menyimpan jumlah
+                barang.
+              </span>
+            </div>
+            <button
+              className="ops-button ops-button--primary"
+              type="submit"
+              disabled={saving || drafts.length >= 50}
+            >
+              Tambahkan paket berikutnya
+              <ArrowRight size={17} aria-hidden="true" />
+            </button>
+          </form>
+
+          <section className="ops-section ops-batch-queue" aria-labelledby="package-queue-title">
+            <div className="ops-section__heading">
+              <div>
+                <p className="ops-eyebrow">ANTREAN SIMPAN</p>
+                <h2 id="package-queue-title">Paket berikutnya</h2>
+              </div>
+              <span className="ops-content-count">{drafts.length} / 50 paket</span>
+            </div>
+            {drafts.length === 0 ? (
+              <p className="ops-empty">
+                Belum ada paket di antrean. Isi formulir lalu tambahkan paket.
               </p>
-              <button
-                className="ops-button ops-button--primary"
-                type="button"
-                onClick={() => void saveAll()}
-                disabled={saving}
-              >
-                {saving ? "Menyimpan semua..." : `Simpan ${drafts.length} paket & buat barcode`}
-                {!saving && <ArrowRight size={17} aria-hidden="true" />}
-              </button>
-            </div>
-            <p className="ops-form__note">
-              Semua paket disimpan dalam satu transaksi. Jika ada data yang tidak valid, tidak ada
-              paket dari antrean ini yang tersimpan.
-            </p>
-          </>
-        )}
-      </section>
+            ) : (
+              <>
+                <div className="ops-table-wrap">
+                  <table className="ops-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Penerima</th>
+                        <th>PCS</th>
+                        <th>Tujuan</th>
+                        <th>Berat</th>
+                        <th>Harga</th>
+                        <th>Keterangan</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drafts.map((draft, index) => (
+                        <tr key={draft.id}>
+                          <td>{index + 1}</td>
+                          <td>
+                            <strong>{draft.recipientName}</strong>
+                          </td>
+                          <td>{draft.pcs}</td>
+                          <td>{draft.destination}</td>
+                          <td>{draft.weightKg.toLocaleString("id-ID")} kg</td>
+                          <td>{formatRupiah(Math.round(draft.weightKg * pricePerKg))}</td>
+                          <td>{draft.description || "—"}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="ops-icon-button"
+                              onClick={() =>
+                                setDrafts((current) =>
+                                  current.filter((item) => item.id !== draft.id),
+                                )
+                              }
+                              aria-label={`Hapus ${draft.recipientName} dari antrean`}
+                              disabled={saving}
+                            >
+                              <X size={16} aria-hidden="true" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="ops-batch-queue__footer">
+                  <p>
+                    Total estimasi{" "}
+                    <strong>
+                      {formatRupiah(
+                        drafts.reduce(
+                          (sum, draft) => sum + Math.round(draft.weightKg * pricePerKg),
+                          0,
+                        ),
+                      )}
+                    </strong>
+                  </p>
+                  <button
+                    className="ops-button ops-button--primary"
+                    type="button"
+                    onClick={() => void saveAll()}
+                    disabled={saving}
+                  >
+                    {saving ? "Menyimpan semua..." : `Simpan ${drafts.length} paket & buat barcode`}
+                    {!saving && <ArrowRight size={17} aria-hidden="true" />}
+                  </button>
+                </div>
+                <p className="ops-form__note">
+                  Semua paket disimpan dalam satu transaksi. Jika ada data yang tidak valid, tidak
+                  ada paket dari antrean ini yang tersimpan.
+                </p>
+              </>
+            )}
+          </section>
+        </>
+      )}
     </>
   );
 }
@@ -978,6 +1065,10 @@ export function BarcodePage() {
                 <div>
                   <dt>Tujuan</dt>
                   <dd>{scanned.destination}</dd>
+                </div>
+                <div>
+                  <dt>PCS</dt>
+                  <dd>{scanned.pcs}</dd>
                 </div>
                 <div>
                   <dt>Berat</dt>

@@ -10,10 +10,11 @@ export type PackageWorkflowState = {
 
 export const packageInputSchema = z.object({
   recipientName: z.string().trim().min(2).max(120),
-  recipientPhone: z.string().trim().min(5).max(32),
-  senderName: z.string().trim().min(2).max(120),
+  recipientPhone: z.string().trim().min(5).max(32).optional(),
+  senderName: z.string().trim().min(2).max(120).optional(),
   destination: z.enum(["Bajawa", "Malanuza", "Aimere"]),
   description: z.string().trim().max(250).default(""),
+  pcs: z.number().int().min(1).max(10000).default(1),
   weightKg: z.number().min(0.01).max(500).multipleOf(0.01),
 });
 

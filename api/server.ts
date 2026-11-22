@@ -229,6 +229,35 @@ async function writePackageEvent(
   );
 }
 
+async function appendPackageBatchItem(
+  client: PoolClient,
+  batchId: string,
+  packageId: string,
+  input: { recipientName: string; pcs: number; weightKg: number; price: number; note: string },
+) {
+  const position = await client.query<{ row_number: number }>(
+    `SELECT coalesce(max(row_number), 0)::int + 1 AS row_number
+     FROM package_batch_items WHERE batch_id = $1`,
+    [batchId],
+  );
+  await client.query(
+    `INSERT INTO package_batch_items
+     (id, batch_id, package_id, row_number, name, pcs, weight_kg, price, note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      randomUUID(),
+      batchId,
+      packageId,
+      position.rows[0]?.row_number ?? 1,
+      input.recipientName,
+      input.pcs,
+      input.weightKg,
+      input.price,
+      input.note,
+    ],
+  );
+}
+
 async function startServer() {
   const connectionString = requiredEnv("DATABASE_URL");
   const sessionSecret = requiredEnv("SESSION_SECRET", 32);
@@ -360,42 +389,87 @@ async function startServer() {
 
   app.get("/api/public/batches", async (_request, response, next) => {
     try {
-      const batches = await pool.query<{
-        id: string;
-        title: string;
-        destination: string;
-        created_at: Date;
-      }>(
+      const batches = await pool.query(
         `SELECT id, title, destination, created_at
          FROM package_batches
-         ORDER BY created_at DESC`,
+         WHERE is_featured = true
+         ORDER BY destination, created_at DESC`,
       );
-      const items = await pool.query<{
-        batch_id: string;
-        row_number: number;
-        name: string;
-        pcs: number;
-      }>(
-        `SELECT batch_id, row_number, name, pcs
-         FROM package_batch_items
-         ORDER BY batch_id, row_number`,
-      );
-      const itemsByBatch = new Map<string, typeof items.rows>();
-      for (const item of items.rows) {
-        const batchItems = itemsByBatch.get(item.batch_id) ?? [];
-        batchItems.push(item);
-        itemsByBatch.set(item.batch_id, batchItems);
-      }
-      response.json({
-        batches: batches.rows.map((batch) => ({
-          ...batch,
-          items: itemsByBatch.get(batch.id) ?? [],
-        })),
-      });
+      response.json({ batches: batches.rows });
     } catch (error) {
       next(error);
     }
   });
+
+  app.get(
+    "/api/public/batches/:batchId/items",
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: 120,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+    }),
+    async (request, response, next) => {
+      try {
+        const batchId = z.string().uuid().parse(request.params["batchId"]);
+        const limit = z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .default(10)
+          .parse(request.query["limit"] ?? "10");
+        const offset = z.coerce
+          .number()
+          .int()
+          .min(0)
+          .max(1_000_000)
+          .default(0)
+          .parse(request.query["offset"] ?? "0");
+        const search = z
+          .string()
+          .trim()
+          .max(120)
+          .default("")
+          .parse(request.query["search"] ?? "");
+        const batch = await pool.query(
+          "SELECT id FROM package_batches WHERE id = $1 AND is_featured = true",
+          [batchId],
+        );
+        if (!batch.rows[0]) {
+          response.status(404).json({ error: "Batch tidak ditemukan." });
+          return;
+        }
+
+        const [count, items] = await Promise.all([
+          pool.query<{ total: number }>(
+            `SELECT count(*)::int AS total FROM package_batch_items
+             WHERE batch_id = $1 AND strpos(lower(name), lower($2)) > 0`,
+            [batchId, search],
+          ),
+          pool.query(
+            `SELECT row_number, name, pcs
+             FROM package_batch_items
+             WHERE batch_id = $1 AND strpos(lower(name), lower($2)) > 0
+             ORDER BY row_number, id
+             LIMIT $3 OFFSET $4`,
+            [batchId, search, limit, offset],
+          ),
+        ]);
+        const total = count.rows[0]?.total ?? 0;
+        response.json({
+          items: items.rows,
+          total,
+          offset,
+          limit,
+          hasPrevious: offset > 0,
+          hasNext: offset + items.rows.length < total,
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   app.get("/api/public/reviews", async (_request, response, next) => {
     try {
@@ -485,6 +559,49 @@ async function startServer() {
         .object({
           title: z.string().trim().min(2).max(80),
           destination: z.enum(["Bajawa", "Malanuza", "Aimere"]),
+        })
+        .parse(request.body);
+
+      const result = await pool.query<{ id: string }>(
+        `INSERT INTO package_batches (id, title, destination, created_by)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (title, destination) DO NOTHING
+         RETURNING id`,
+        [randomUUID(), input.title, input.destination, request.staffUser!.id],
+      );
+      if (!result.rows[0]) {
+        response.status(409).json({ error: "Nama batch tersebut sudah ada untuk tujuan ini." });
+        return;
+      }
+      response.status(201).json({
+        batch: { id: result.rows[0].id, title: input.title, destination: input.destination },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/batches", async (_request, response, next) => {
+    try {
+      const result = await pool.query(
+        `SELECT b.id, b.title, b.destination, b.is_featured, b.created_at,
+           count(i.id)::int AS item_count
+         FROM package_batches b
+         LEFT JOIN package_batch_items i ON i.batch_id = b.id
+         GROUP BY b.id
+         ORDER BY b.created_at DESC`,
+      );
+      response.json({ batches: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/batches/:id/items", requireOwner, async (request, response, next) => {
+    try {
+      const batchId = z.string().uuid().parse(request.params["id"]);
+      const input = z
+        .object({
           items: z
             .array(
               z.object({
@@ -500,29 +617,24 @@ async function startServer() {
             .max(1000),
         })
         .parse(request.body);
-
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const existing = await client.query<{ id: string }>(
-          "SELECT id FROM package_batches WHERE title = $1 AND destination = $2",
-          [input.title, input.destination],
+        const batch = await client.query<{ id: string }>(
+          "SELECT id FROM package_batches WHERE id = $1 FOR UPDATE",
+          [batchId],
         );
-        let batchId: string;
-        if (existing.rows[0]) {
-          batchId = existing.rows[0].id;
-          await client.query("DELETE FROM package_batch_items WHERE batch_id = $1", [batchId]);
-          await client.query("UPDATE package_batches SET created_at = now() WHERE id = $1", [
-            batchId,
-          ]);
-        } else {
-          batchId = randomUUID();
-          await client.query(
-            `INSERT INTO package_batches (id, title, destination, created_by)
-             VALUES ($1, $2, $3, $4)`,
-            [batchId, input.title, input.destination, request.staffUser!.id],
-          );
-        }
+        if (!batch.rows[0]) throw new WorkflowError("Batch tidak ditemukan.", 404);
+        await client.query(
+          "DELETE FROM package_batch_items WHERE batch_id = $1 AND package_id IS NULL",
+          [batchId],
+        );
+        const existingRows = await client.query<{ next_row: number }>(
+          `SELECT coalesce(max(row_number), 0)::int + 1 AS next_row
+           FROM package_batch_items WHERE batch_id = $1`,
+          [batchId],
+        );
+        const rowOffset = existingRows.rows[0]?.next_row ?? 1;
         for (const item of input.items) {
           await client.query(
             `INSERT INTO package_batch_items
@@ -531,7 +643,7 @@ async function startServer() {
             [
               randomUUID(),
               batchId,
-              item.rowNumber,
+              rowOffset + item.rowNumber - 1,
               item.name,
               item.pcs,
               item.weightKg,
@@ -541,9 +653,7 @@ async function startServer() {
           );
         }
         await client.query("COMMIT");
-        response.status(201).json({
-          batch: { id: batchId, title: input.title, destination: input.destination },
-        });
+        response.json({ batchId, imported: input.items.length });
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;
@@ -555,18 +665,42 @@ async function startServer() {
     }
   });
 
-  app.get("/api/batches", async (_request, response, next) => {
+  app.patch("/api/batches/:id/featured", requireOwner, async (request, response, next) => {
+    const client = await pool.connect();
     try {
-      const result = await pool.query(
-        `SELECT b.id, b.title, b.destination, b.created_at, count(i.id)::int AS item_count
-         FROM package_batches b
-         LEFT JOIN package_batch_items i ON i.batch_id = b.id
-         GROUP BY b.id
-         ORDER BY b.created_at DESC`,
+      const batchId = z.string().uuid().parse(request.params["id"]);
+      const { featured } = z.object({ featured: z.boolean() }).parse(request.body);
+      await client.query("BEGIN");
+      const existing = await client.query<{ destination: string }>(
+        "SELECT destination FROM package_batches WHERE id = $1",
+        [batchId],
       );
-      response.json({ batches: result.rows });
+      if (!existing.rows[0]) throw new WorkflowError("Batch tidak ditemukan.", 404);
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `featured-batch-${existing.rows[0].destination}`,
+      ]);
+      const batch = await client.query<{ destination: string }>(
+        "SELECT destination FROM package_batches WHERE id = $1 FOR UPDATE",
+        [batchId],
+      );
+      if (!batch.rows[0]) throw new WorkflowError("Batch tidak ditemukan.", 404);
+      if (featured) {
+        await client.query(
+          "UPDATE package_batches SET is_featured = false WHERE destination = $1",
+          [batch.rows[0].destination],
+        );
+      }
+      await client.query("UPDATE package_batches SET is_featured = $2 WHERE id = $1", [
+        batchId,
+        featured,
+      ]);
+      await client.query("COMMIT");
+      response.json({ batchId, featured });
     } catch (error) {
+      await client.query("ROLLBACK");
       next(error);
+    } finally {
+      client.release();
     }
   });
 
@@ -769,8 +903,8 @@ async function startServer() {
            FROM packages`,
         ),
         pool.query(
-          `SELECT id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-            description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
+          `SELECT id, batch_id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
+            description, pcs, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
             archived_at, created_at
            FROM packages WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 10`,
         ),
@@ -808,8 +942,8 @@ async function startServer() {
         z.enum(["true", "false"]).default("false").parse(request.query["archived"]) === "true";
       if (archived) assertOwnerRole(request.staffUser!.role);
       const result = await pool.query(
-        `SELECT id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-          description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
+        `SELECT id, batch_id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
+          description, pcs, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
           archived_at, created_at
          FROM packages
          WHERE archived_at IS ${archived ? "NOT " : ""}NULL
@@ -831,13 +965,24 @@ async function startServer() {
   });
 
   app.post("/api/packages/bulk", async (request, response, next) => {
-    const { packages: inputs } = packageBatchSchema.parse(request.body);
+    const { batchId, packages: inputs } = z
+      .object({ batchId: z.string().uuid(), ...packageBatchSchema.shape })
+      .parse(request.body);
     const staff = request.staffUser!;
     const client = await pool.connect();
     const created: Array<{ package: Record<string, unknown>; barcodeToken: string }> = [];
 
     try {
       await client.query("BEGIN");
+      const batch = await client.query<{ destination: string }>(
+        "SELECT destination FROM package_batches WHERE id = $1 FOR UPDATE",
+        [batchId],
+      );
+      const selectedBatch = batch.rows[0];
+      if (!selectedBatch) throw new WorkflowError("Pilih batch pengiriman yang valid.", 404);
+      if (inputs.some((input) => input.destination !== selectedBatch.destination)) {
+        throw new WorkflowError("Tujuan paket harus sesuai dengan tujuan batch terpilih.", 400);
+      }
       const setting = await client.query<{ setting_value: string }>(
         "SELECT setting_value FROM app_settings WHERE setting_key = 'price_per_kg' FOR SHARE",
       );
@@ -853,20 +998,22 @@ async function startServer() {
         const totalPrice = calculateCharge(input.weightKg, pricePerKg);
         const result = await client.query(
           `INSERT INTO packages (
-            id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-            description, weight_kg, price_per_kg, total_price, barcode_hash, created_by
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            id, batch_id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
+            description, pcs, weight_kg, price_per_kg, total_price, barcode_hash, created_by
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           RETURNING id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-            description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
+            batch_id, description, pcs, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
             archived_at, created_at`,
           [
             packageId,
+            batchId,
             trackingCode,
             input.recipientName,
-            input.recipientPhone,
-            input.senderName,
+            input.recipientPhone ?? null,
+            input.senderName ?? null,
             input.destination,
             input.description,
+            input.pcs,
             input.weightKg,
             pricePerKg,
             totalPrice,
@@ -875,6 +1022,13 @@ async function startServer() {
           ],
         );
         await writePackageEvent(client, packageId, staff.id, "created");
+        await appendPackageBatchItem(client, batchId, packageId, {
+          recipientName: input.recipientName,
+          pcs: input.pcs,
+          weightKg: input.weightKg,
+          price: totalPrice,
+          note: input.description,
+        });
         created.push({ package: result.rows[0], barcodeToken });
       }
 
@@ -889,7 +1043,9 @@ async function startServer() {
   });
 
   app.post("/api/packages", async (request, response, next) => {
-    const input = packageInputSchema.parse(request.body);
+    const { batchId, ...input } = packageInputSchema
+      .extend({ batchId: z.string().uuid() })
+      .parse(request.body);
     const staff = request.staffUser!;
     const client = await pool.connect();
     const packageId = randomUUID();
@@ -898,6 +1054,14 @@ async function startServer() {
 
     try {
       await client.query("BEGIN");
+      const batch = await client.query<{ destination: string }>(
+        "SELECT destination FROM package_batches WHERE id = $1 FOR UPDATE",
+        [batchId],
+      );
+      if (!batch.rows[0]) throw new WorkflowError("Pilih batch pengiriman yang valid.", 404);
+      if (input.destination !== batch.rows[0].destination) {
+        throw new WorkflowError("Tujuan paket harus sesuai dengan tujuan batch terpilih.", 400);
+      }
       const setting = await client.query<{ setting_value: string }>(
         "SELECT setting_value FROM app_settings WHERE setting_key = 'price_per_kg' FOR SHARE",
       );
@@ -908,19 +1072,21 @@ async function startServer() {
       const totalPrice = calculateCharge(input.weightKg, pricePerKg);
       const result = await client.query(
         `INSERT INTO packages (
-          id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-          description, weight_kg, price_per_kg, total_price, barcode_hash, created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          id, batch_id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
+          description, pcs, weight_kg, price_per_kg, total_price, barcode_hash, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-          description, weight_kg, price_per_kg, total_price, created_at`,
+          batch_id, description, pcs, weight_kg, price_per_kg, total_price, created_at`,
         [
           packageId,
+          batchId,
           trackingCode,
           input.recipientName,
-          input.recipientPhone,
-          input.senderName,
+          input.recipientPhone ?? null,
+          input.senderName ?? null,
           input.destination,
           input.description,
+          input.pcs,
           input.weightKg,
           pricePerKg,
           totalPrice,
@@ -929,6 +1095,13 @@ async function startServer() {
         ],
       );
       await writePackageEvent(client, packageId, staff.id, "created");
+      await appendPackageBatchItem(client, batchId, packageId, {
+        recipientName: input.recipientName,
+        pcs: input.pcs,
+        weightKg: input.weightKg,
+        price: totalPrice,
+        note: input.description,
+      });
       await client.query("COMMIT");
       response.status(201).json({ package: result.rows[0], barcodeToken });
     } catch (error) {
@@ -946,13 +1119,14 @@ async function startServer() {
       await client.query("BEGIN");
       const result = await client.query<{
         id: string;
+        batch_id: string | null;
         price_per_kg: string | number;
         verified_at: string | null;
         paid_at: string | null;
         collected_at: string | null;
         archived_at: string | null;
       }>(
-        `SELECT id, price_per_kg, verified_at, paid_at, collected_at, archived_at
+        `SELECT id, batch_id, price_per_kg, verified_at, paid_at, collected_at, archived_at
          FROM packages WHERE id = $1 FOR UPDATE`,
         [request.params["id"]],
       );
@@ -964,26 +1138,49 @@ async function startServer() {
         collectedAt: existing.collected_at,
         archivedAt: existing.archived_at,
       });
+      if (existing.batch_id) {
+        const batch = await client.query<{ destination: string }>(
+          "SELECT destination FROM package_batches WHERE id = $1",
+          [existing.batch_id],
+        );
+        if (input.destination !== batch.rows[0]?.destination) {
+          throw new WorkflowError("Tujuan paket harus sesuai dengan batch pengirimannya.", 400);
+        }
+      }
       const totalPrice = calculateCharge(input.weightKg, Number(existing.price_per_kg));
       const updated = await client.query(
         `UPDATE packages
-         SET recipient_name = $2, recipient_phone = $3, sender_name = $4, destination = $5,
-             description = $6, weight_kg = $7, total_price = $8
+         SET recipient_name = $2, destination = $3, description = $4, pcs = $5,
+             weight_kg = $6, total_price = $7
          WHERE id = $1
          RETURNING id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-           description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
+           batch_id, description, pcs, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
            archived_at, created_at`,
         [
           existing.id,
           input.recipientName,
-          input.recipientPhone,
-          input.senderName,
           input.destination,
           input.description,
+          input.pcs,
           input.weightKg,
           totalPrice,
         ],
       );
+      if (existing.batch_id) {
+        await client.query(
+          `UPDATE package_batch_items
+           SET name = $2, pcs = $3, weight_kg = $4, price = $5, note = $6
+           WHERE package_id = $1`,
+          [
+            existing.id,
+            input.recipientName,
+            input.pcs,
+            input.weightKg,
+            totalPrice,
+            input.description,
+          ],
+        );
+      }
       await client.query("COMMIT");
       response.json({ package: updated.rows[0] });
     } catch (error) {
@@ -1063,7 +1260,7 @@ async function startServer() {
       await client.query("BEGIN");
       const result = await client.query(
         `SELECT id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-          description, weight_kg, price_per_kg, total_price, barcode_hash,
+          description, pcs, weight_kg, price_per_kg, total_price, barcode_hash,
           verified_at, paid_at, collected_at
          FROM packages WHERE id = $1 AND archived_at IS NULL FOR UPDATE`,
         [packageId],
@@ -1080,7 +1277,7 @@ async function startServer() {
       await writePackageEvent(client, packageId, staff.id, input.action);
       const updated = await client.query(
         `SELECT id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
-          description, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at
+          description, pcs, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at
          FROM packages WHERE id = $1`,
         [packageId],
       );
@@ -1097,7 +1294,7 @@ async function startServer() {
   app.get("/api/payments", async (_request, response, next) => {
     try {
       const result = await pool.query(
-        `SELECT id, tracking_code, recipient_name, recipient_phone, destination, weight_kg,
+        `SELECT id, tracking_code, recipient_name, recipient_phone, destination, pcs, weight_kg,
           total_price, verified_at, paid_at, collected_at, archived_at, created_at
          FROM packages ORDER BY (paid_at IS NULL) DESC, created_at DESC LIMIT 100`,
       );

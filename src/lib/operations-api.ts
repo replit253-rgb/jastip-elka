@@ -1,11 +1,13 @@
 export type PackageRecord = {
   id: string;
+  batch_id?: string | null;
   tracking_code: string;
   recipient_name: string;
   recipient_phone?: string;
   sender_name?: string;
   destination: string;
   description?: string;
+  pcs: number;
   weight_kg: string | number;
   price_per_kg?: number;
   total_price: number;
