@@ -15,9 +15,21 @@ type BarcodePageResult = {
   nextOffset: number;
 };
 
+type BatchSummary = {
+  id: string;
+  title: string;
+  destination: string;
+  package_count: number;
+  archived_package_count: number;
+};
+
 export function BarcodeLibraryPage() {
   const { role } = useStaff();
   const isOwner = role === "owner";
+  const [batches, setBatches] = useState<BatchSummary[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [batchesLoading, setBatchesLoading] = useState(true);
+  const [batchError, setBatchError] = useState("");
   const [archived, setArchived] = useState(false);
   const [packages, setPackages] = useState<BarcodePackage[]>([]);
   const [offset, setOffset] = useState(0);
@@ -30,22 +42,65 @@ export function BarcodeLibraryPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [printOnlyIds, setPrintOnlyIds] = useState<string[] | null>(null);
   const [error, setError] = useState("");
+  const selectedBatch = batches.find((batch) => batch.id === selectedBatchId);
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError("");
+    apiRequest<{ batches: BatchSummary[] }>("/api/batches")
+      .then((result) => {
+        if (active) setBatches(result.batches);
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setBatchError(cause instanceof Error ? cause.message : "Daftar batch gagal dimuat.");
+      })
+      .finally(() => {
+        if (active) setBatchesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     setPackages([]);
     setOffset(0);
     setHasMore(false);
-    const query = new URLSearchParams({ limit: "30", offset: "0", archived: String(archived) });
-    apiRequest<BarcodePageResult>(`/api/packages?${query}`)
-      .then((result) => {
-        if (!active) return;
-        setPackages(result.packages);
-        setOffset(result.nextOffset);
-        setHasMore(result.hasMore);
-      })
+    if (!selectedBatchId) {
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setLoading(true);
+    setError("");
+    async function loadBatchPackages() {
+      const allPackages: BarcodePackage[] = [];
+      let nextOffset = 0;
+      let hasMorePackages = true;
+      while (hasMorePackages) {
+        const query = new URLSearchParams({
+          limit: "100",
+          offset: String(nextOffset),
+          archived: String(archived),
+          batchId: selectedBatchId,
+        });
+        const result = await apiRequest<BarcodePageResult>(`/api/packages?${query}`);
+        if (!result.packages.length && result.hasMore) {
+          throw new Error("Daftar barcode batch tidak dapat dimuat seluruhnya.");
+        }
+        allPackages.push(...result.packages);
+        nextOffset = result.nextOffset;
+        hasMorePackages = result.hasMore;
+      }
+      if (!active) return;
+      setPackages(allPackages);
+      setOffset(nextOffset);
+      setHasMore(false);
+    }
+    void loadBatchPackages()
       .catch((cause: unknown) => {
         if (active)
           setError(cause instanceof Error ? cause.message : "Daftar barcode gagal dimuat.");
@@ -56,7 +111,7 @@ export function BarcodeLibraryPage() {
     return () => {
       active = false;
     };
-  }, [archived, reloadKey]);
+  }, [archived, reloadKey, selectedBatchId]);
 
   useEffect(() => {
     if (
@@ -90,6 +145,7 @@ export function BarcodeLibraryPage() {
         offset: String(offset),
         archived: String(archived),
       });
+      if (selectedBatchId) query.set("batchId", selectedBatchId);
       const result = await apiRequest<BarcodePageResult>(`/api/packages?${query}`);
       setPackages((current) => [...current, ...result.packages]);
       setOffset(result.nextOffset);
@@ -118,6 +174,7 @@ export function BarcodeLibraryPage() {
           offset: String(nextOffset),
           archived: String(archived),
         });
+        if (selectedBatchId) query.set("batchId", selectedBatchId);
         const result = await apiRequest<BarcodePageResult>(`/api/packages?${query}`);
         allPackages.push(...result.packages);
         nextOffset = result.nextOffset;
@@ -178,22 +235,27 @@ export function BarcodeLibraryPage() {
           <Link className="ops-button ops-button--quiet" to="/dashboard/scan">
             <ScanLine size={16} aria-hidden="true" /> Buka pemindai
           </Link>
-          <button
-            className="ops-button ops-button--primary"
-            type="button"
-            onClick={() => void printAll()}
-            disabled={loading || loadingMore || printing || packages.length === 0}
-          >
-            <Printer size={16} aria-hidden="true" /> {printing ? "Menyiapkan..." : "Cetak semua"}
-          </button>
-          <button
-            className="ops-button ops-button--outline"
-            type="button"
-            onClick={() => printPackages(selectedIds)}
-            disabled={loading || printing || selectedIds.length === 0}
-          >
-            <Printer size={16} aria-hidden="true" /> Cetak pilihan ({selectedIds.length})
-          </button>
+          {selectedBatchId && (
+            <>
+              <button
+                className="ops-button ops-button--primary"
+                type="button"
+                onClick={() => void printAll()}
+                disabled={loading || loadingMore || printing || packages.length === 0}
+              >
+                <Printer size={16} aria-hidden="true" />{" "}
+                {printing ? "Menyiapkan..." : "Cetak semua"}
+              </button>
+              <button
+                className="ops-button ops-button--outline"
+                type="button"
+                onClick={() => printPackages(selectedIds)}
+                disabled={loading || printing || selectedIds.length === 0}
+              >
+                <Printer size={16} aria-hidden="true" /> Cetak pilihan ({selectedIds.length})
+              </button>
+            </>
+          )}
         </div>
       </PageHeading>
 
@@ -222,130 +284,186 @@ export function BarcodeLibraryPage() {
         </div>
       )}
 
-      {error && (
+      {(batchError || error) && (
         <p className="ops-message ops-message--error" role="alert">
-          {error}
+          {batchError || error}
         </p>
       )}
-      {loading ? (
-        <p className="ops-empty" aria-live="polite">
-          Memuat barcode...
-        </p>
-      ) : packages.length === 0 ? (
-        <p className="ops-empty">
-          {archived ? "Belum ada barcode dalam arsip." : "Belum ada barcode yang dibuat."}
-        </p>
+      {!selectedBatchId ? (
+        batchesLoading ? (
+          <p className="ops-empty" aria-live="polite">
+            Memuat batch...
+          </p>
+        ) : batches.length === 0 ? (
+          <p className="ops-empty">Belum ada batch pengiriman.</p>
+        ) : (
+          <div className="ops-barcode-batches">
+            {batches.map((batch) => {
+              const packageCount = archived ? batch.archived_package_count : batch.package_count;
+              return (
+                <button
+                  className="ops-barcode-batch-card"
+                  key={batch.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedIds([]);
+                    setPrintOnlyIds(null);
+                    setError("");
+                    setSelectedBatchId(batch.id);
+                  }}
+                >
+                  <span className="ops-eyebrow">{batch.destination}</span>
+                  <strong>{batch.title}</strong>
+                  <span>
+                    {packageCount} {archived ? "barcode diarsipkan" : "barcode aktif"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )
       ) : (
-        <div
-          className={`ops-barcode-grid${printOnlyIds ? " ops-barcode-grid--print-selection" : ""}`}
-        >
-          {packages.map((item) => (
-            <article
-              className={[
-                "ops-barcode-card",
-                item.archived_at ? "ops-barcode-card--archived" : "",
-                printOnlyIds === null || printOnlyIds.includes(item.id)
-                  ? "ops-barcode-card--print-target"
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              key={item.id}
+        <>
+          <section className="ops-barcode-batch-detail">
+            <div>
+              <p className="ops-eyebrow">{selectedBatch?.destination ?? "BATCH"}</p>
+              <h2>{selectedBatch?.title ?? "Batch tidak ditemukan"}</h2>
+            </div>
+            <button
+              className="ops-button ops-button--outline"
+              type="button"
+              onClick={() => {
+                setSelectedIds([]);
+                setPrintOnlyIds(null);
+                setError("");
+                setSelectedBatchId("");
+              }}
             >
-              <div className="ops-barcode-card__heading">
-                <div>
-                  <p className="ops-eyebrow">{item.tracking_code}</p>
-                  <h2>{item.recipient_name}</h2>
-                </div>
-                <div className="ops-barcode-card__selection">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(item.id)}
-                      onChange={() => toggleSelected(item.id)}
-                      aria-label={`Pilih barcode ${item.tracking_code} untuk dicetak`}
+              Kembali ke daftar batch
+            </button>
+          </section>
+          {loading ? (
+            <p className="ops-empty" aria-live="polite">
+              Memuat barcode...
+            </p>
+          ) : packages.length === 0 ? (
+            <p className="ops-empty">
+              {archived
+                ? "Batch ini belum memiliki barcode dalam arsip."
+                : "Batch ini belum memiliki barcode aktif."}
+            </p>
+          ) : (
+            <div
+              className={`ops-barcode-grid${printOnlyIds ? " ops-barcode-grid--print-selection" : ""}`}
+            >
+              {packages.map((item) => (
+                <article
+                  className={[
+                    "ops-barcode-card",
+                    item.archived_at ? "ops-barcode-card--archived" : "",
+                    printOnlyIds === null || printOnlyIds.includes(item.id)
+                      ? "ops-barcode-card--print-target"
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  key={item.id}
+                >
+                  <div className="ops-barcode-card__heading">
+                    <div>
+                      <p className="ops-eyebrow">{item.tracking_code}</p>
+                      <h2>{item.recipient_name}</h2>
+                    </div>
+                    <div className="ops-barcode-card__selection">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(item.id)}
+                          onChange={() => toggleSelected(item.id)}
+                          aria-label={`Pilih barcode ${item.tracking_code} untuk dicetak`}
+                        />
+                        <span>Pilih</span>
+                      </label>
+                      {item.archived_at ? (
+                        <span className="ops-content-status">Diarsipkan</span>
+                      ) : (
+                        <PackageStatus item={item} />
+                      )}
+                    </div>
+                  </div>
+                  <div className="ops-barcode-card__qr">
+                    <QRCodeCanvas
+                      id={`barcode-canvas-${item.id}`}
+                      value={item.barcodeToken}
+                      size={512}
+                      level="M"
+                      title={`Barcode ${item.tracking_code}`}
                     />
-                    <span>Pilih</span>
-                  </label>
-                  {item.archived_at ? (
-                    <span className="ops-content-status">Diarsipkan</span>
-                  ) : (
-                    <PackageStatus item={item} />
-                  )}
-                </div>
-              </div>
-              <div className="ops-barcode-card__qr">
-                <QRCodeCanvas
-                  id={`barcode-canvas-${item.id}`}
-                  value={item.barcodeToken}
-                  size={512}
-                  level="M"
-                  title={`Barcode ${item.tracking_code}`}
-                />
-              </div>
-              <dl className="ops-barcode-card__details">
-                <div>
-                  <dt>Tujuan</dt>
-                  <dd>{item.destination}</dd>
-                </div>
-                <div>
-                  <dt>PCS</dt>
-                  <dd>{item.pcs}</dd>
-                </div>
-                <div>
-                  <dt>Berat</dt>
-                  <dd>{Number(item.weight_kg).toLocaleString("id-ID")} kg</dd>
-                </div>
-                <div>
-                  <dt>Tagihan</dt>
-                  <dd>{formatRupiah(item.total_price)}</dd>
-                </div>
-                <div>
-                  <dt>Dibuat</dt>
-                  <dd>{formatDate(item.created_at)}</dd>
-                </div>
-              </dl>
-              <div className="ops-barcode-card__actions">
-                <button
-                  className="ops-button ops-button--quiet"
-                  type="button"
-                  onClick={() => printPackages([item.id])}
-                >
-                  <Printer size={15} aria-hidden="true" /> Cetak barcode ini
-                </button>
-                <button
-                  className="ops-button ops-button--quiet"
-                  type="button"
-                  onClick={() => downloadBarcode(item)}
-                >
-                  <Download size={15} aria-hidden="true" /> Unduh PNG
-                </button>
-                {item.archived_at && isOwner && (
-                  <button
-                    className="ops-button ops-button--quiet"
-                    type="button"
-                    onClick={() => void restorePackage(item)}
-                  >
-                    <RotateCcw size={15} aria-hidden="true" /> Pulihkan paket
-                  </button>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {hasMore && !loading && (
-        <div className="ops-barcode-library__more">
-          <button
-            className="ops-button ops-button--outline"
-            type="button"
-            onClick={() => void loadMore()}
-            disabled={loadingMore}
-          >
-            {loadingMore ? "Memuat..." : "Muat barcode berikutnya"}
-          </button>
-        </div>
+                  </div>
+                  <dl className="ops-barcode-card__details">
+                    <div>
+                      <dt>Tujuan</dt>
+                      <dd>{item.destination}</dd>
+                    </div>
+                    <div>
+                      <dt>PCS</dt>
+                      <dd>{item.pcs}</dd>
+                    </div>
+                    <div>
+                      <dt>Berat</dt>
+                      <dd>{Number(item.weight_kg).toLocaleString("id-ID")} kg</dd>
+                    </div>
+                    <div>
+                      <dt>Tagihan</dt>
+                      <dd>{formatRupiah(item.total_price)}</dd>
+                    </div>
+                    <div>
+                      <dt>Dibuat</dt>
+                      <dd>{formatDate(item.created_at)}</dd>
+                    </div>
+                  </dl>
+                  <div className="ops-barcode-card__actions">
+                    <button
+                      className="ops-button ops-button--quiet"
+                      type="button"
+                      onClick={() => printPackages([item.id])}
+                    >
+                      <Printer size={15} aria-hidden="true" /> Cetak barcode ini
+                    </button>
+                    <button
+                      className="ops-button ops-button--quiet"
+                      type="button"
+                      onClick={() => downloadBarcode(item)}
+                    >
+                      <Download size={15} aria-hidden="true" /> Unduh PNG
+                    </button>
+                    {item.archived_at && isOwner && (
+                      <button
+                        className="ops-button ops-button--quiet"
+                        type="button"
+                        onClick={() => void restorePackage(item)}
+                      >
+                        <RotateCcw size={15} aria-hidden="true" /> Pulihkan paket
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+          {hasMore && !loading && (
+            <div className="ops-barcode-library__more">
+              <button
+                className="ops-button ops-button--outline"
+                type="button"
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+              >
+                {loadingMore ? "Memuat..." : "Muat barcode berikutnya"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

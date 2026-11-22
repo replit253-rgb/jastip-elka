@@ -1,9 +1,10 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
-import { Download, Star } from "lucide-react";
+import { Download, FileDown, Star, Trash2 } from "lucide-react";
 
 import { PageHeading } from "@/components/operations-dashboard";
 import { useStaff } from "@/components/operations-dashboard-context";
 import { apiRequest } from "@/lib/operations-api";
+import type { BatchPdfInfo, BatchPdfItem } from "@/lib/batch-pdf";
 import {
   createBatchWorkbookTemplate,
   parseBatchWorkbook,
@@ -16,6 +17,9 @@ type BatchSummary = {
   title: string;
   destination: BatchDestination;
   item_count: number;
+  package_count: number;
+  archived_package_count: number;
+  has_excel_import: boolean;
   is_featured: boolean;
   created_at: string;
 };
@@ -36,6 +40,7 @@ export function BatchUploadPage() {
   const [loading, setLoading] = useState(true);
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exportingBatchId, setExportingBatchId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -106,6 +111,11 @@ export function BatchUploadPage() {
       event.target.value = "";
       return;
     }
+    if (selectedBatch.has_excel_import) {
+      setError("Batch ini sudah pernah diimpor dari Excel dan barcode-nya sudah dibuat.");
+      event.target.value = "";
+      return;
+    }
     setError("");
     setMessage("");
     setFileName(file.name);
@@ -143,7 +153,7 @@ export function BatchUploadPage() {
 
   async function handleImport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedBatch || !items.length) {
+    if (!selectedBatch || !items.length || selectedBatch.has_excel_import) {
       setError("Pilih batch tujuan dan file Excel yang berisi nama penerima.");
       return;
     }
@@ -151,7 +161,7 @@ export function BatchUploadPage() {
     setError("");
     setMessage("");
     try {
-      const result = await apiRequest<{ imported: number }>(
+      const result = await apiRequest<{ imported: number; barcodesGenerated: number }>(
         `/api/batches/${selectedBatch.id}/items`,
         {
           method: "PUT",
@@ -159,7 +169,7 @@ export function BatchUploadPage() {
         },
       );
       setMessage(
-        `${result.imported} penerima dari ${sheetTitle} berhasil diimpor ke ${selectedBatch.title}.`,
+        `${result.imported} paket dari ${sheetTitle} berhasil diimpor ke ${selectedBatch.title}; ${result.barcodesGenerated} barcode otomatis dibuat.`,
       );
       resetImport();
       await loadBatches();
@@ -188,6 +198,64 @@ export function BatchUploadPage() {
       setError(
         cause instanceof Error ? cause.message : "Pilihan batch halaman utama gagal diubah.",
       );
+    }
+  }
+
+  async function downloadBatchPdf(batch: BatchSummary) {
+    setError("");
+    setMessage("");
+    setExportingBatchId(batch.id);
+    try {
+      const items: BatchPdfItem[] = [];
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const query = new URLSearchParams({ limit: "500", offset: String(offset) });
+        const result = await apiRequest<{
+          batch: BatchPdfInfo;
+          items: BatchPdfItem[];
+          hasMore: boolean;
+        }>(`/api/batches/${batch.id}/items?${query}`);
+        if (!result.items.length && result.hasMore) {
+          throw new Error("Daftar batch tidak dapat dimuat seluruhnya untuk dibuat PDF.");
+        }
+        items.push(...result.items);
+        offset += result.items.length;
+        hasMore = result.hasMore;
+      }
+      if (!items.length) throw new Error("Batch ini belum memiliki data paket untuk diunduh.");
+      const { batchPdfFilename, createBatchPdf } = await import("@/lib/batch-pdf");
+      createBatchPdf(batch, items).save(batchPdfFilename(batch));
+      setMessage(`PDF daftar paket ${batch.title} berhasil dibuat.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "PDF daftar paket gagal dibuat.");
+    } finally {
+      setExportingBatchId("");
+    }
+  }
+
+  async function deleteBatch(batch: BatchSummary) {
+    const packageCount = batch.package_count + batch.archived_package_count;
+    const confirmed = window.confirm(
+      `Hapus batch ${batch.title} (${batch.destination})? ${packageCount} paket/barcode, riwayat tracking, dan ${batch.item_count} baris daftar penerima akan dihapus permanen.`,
+    );
+    if (!confirmed) return;
+    setError("");
+    setMessage("");
+    setSaving(true);
+    try {
+      const result = await apiRequest<{ deletedPackages: number }>(`/api/batches/${batch.id}`, {
+        method: "DELETE",
+      });
+      if (targetBatchId === batch.id) resetImport();
+      await loadBatches();
+      setMessage(
+        `Batch ${batch.title} dan ${result.deletedPackages} paket beserta barcode serta riwayat tracking-nya berhasil dihapus.`,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Batch gagal dihapus.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -264,9 +332,8 @@ export function BatchUploadPage() {
           <h2>Impor daftar Excel ke batch</h2>
           <p className="ops-form__note">
             Pilih batch tujuan terlebih dahulu. Workbook mengikuti contoh: kolom NO., NAMA, PCS,
-            BERAT, HARGA, dan KET. Sheet yang digunakan otomatis mengikuti tujuan batch. Impor
-            mengganti data Excel sebelumnya pada batch terpilih, tetapi mempertahankan paket yang
-            telah dimasukkan lewat form input.
+            BERAT, HARGA, dan KET. Sheet yang digunakan otomatis mengikuti tujuan batch. Setiap
+            baris Excel menjadi paket operasional dengan nomor tracking dan barcode.
           </p>
           {loading ? (
             <p className="ops-empty">Memuat batch...</p>
@@ -299,10 +366,22 @@ export function BatchUploadPage() {
                   type="file"
                   accept=".xlsx,.xls"
                   onChange={handleFile}
-                  disabled={!isOwner || saving || reading || !targetBatchId}
+                  disabled={
+                    !isOwner ||
+                    saving ||
+                    reading ||
+                    !targetBatchId ||
+                    selectedBatch?.has_excel_import
+                  }
                   required
                 />
               </label>
+              {selectedBatch?.has_excel_import && (
+                <p className="ops-message ops-message--error" role="status">
+                  Batch ini sudah pernah diimpor dan barcode telah dibuat. Untuk mengganti data,
+                  hapus batch ini lalu buat batch baru.
+                </p>
+              )}
               {fileName && <p className="ops-form__note">File: {fileName}</p>}
               {items.length > 0 && (
                 <p className="ops-form__note">
@@ -312,7 +391,9 @@ export function BatchUploadPage() {
               <button
                 className="ops-button ops-button--primary"
                 type="submit"
-                disabled={!isOwner || saving || reading || !items.length}
+                disabled={
+                  !isOwner || saving || reading || !items.length || selectedBatch?.has_excel_import
+                }
               >
                 {reading ? "Membaca file..." : saving ? "Mengimpor..." : "Impor ke batch terpilih"}
               </button>
@@ -339,6 +420,7 @@ export function BatchUploadPage() {
                     <th>Tujuan</th>
                     <th>Daftar penerima</th>
                     <th>Halaman utama</th>
+                    {isOwner && <th>Aksi</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -361,6 +443,29 @@ export function BatchUploadPage() {
                           {batch.is_featured ? "Ditampilkan" : "Tampilkan"}
                         </button>
                       </td>
+                      {isOwner && (
+                        <td>
+                          <div className="ops-batch-actions">
+                            <button
+                              className="ops-button ops-button--quiet"
+                              type="button"
+                              onClick={() => void downloadBatchPdf(batch)}
+                              disabled={saving || exportingBatchId !== ""}
+                            >
+                              <FileDown size={15} aria-hidden="true" />
+                              {exportingBatchId === batch.id ? "Menyiapkan PDF..." : "Unduh PDF"}
+                            </button>
+                            <button
+                              className="ops-button ops-button--quiet"
+                              type="button"
+                              onClick={() => void deleteBatch(batch)}
+                              disabled={saving || exportingBatchId !== ""}
+                            >
+                              <Trash2 size={15} aria-hidden="true" /> Hapus
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

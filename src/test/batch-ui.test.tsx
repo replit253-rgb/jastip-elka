@@ -1,13 +1,36 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BatchUploadPage } from "@/components/batch-upload-page";
+import { BarcodeLibraryPage } from "@/components/barcode-library";
 import { DashboardContext } from "@/components/operations-dashboard-context";
 import { BatchListSection } from "@/components/elkana-site";
+import { createBatchPdf } from "@/lib/batch-pdf";
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    Link: ({ to, ...props }: { to: string } & ComponentProps<"a">) => <a href={to} {...props} />,
+  };
+});
+
+vi.mock("@/lib/batch-pdf", () => ({
+  batchPdfFilename: vi.fn(() => "batch.pdf"),
+  createBatchPdf: vi.fn(() => ({ save: vi.fn() })),
+}));
+
+vi.mock("qrcode.react", () => ({
+  QRCodeCanvas: ({ id, title }: { id: string; title: string }) => (
+    <canvas id={id} aria-label={title} />
+  ),
+}));
 
 describe("public batch list", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("loads featured batch recipients, searches, and switches destination", async () => {
@@ -176,5 +199,163 @@ describe("public batch list", () => {
         screen.getByText("Buat batch terlebih dahulu sebelum mengimpor daftar Excel."),
       ).toBeVisible();
     });
+
+    it("lets owners download a batch PDF and delete a batch", async () => {
+      const batchId = "00000000-0000-4000-8000-000000000001";
+      const batch = {
+        id: batchId,
+        title: "BATCH 34",
+        destination: "Bajawa",
+        item_count: 1,
+        package_count: 1,
+        archived_package_count: 0,
+        has_excel_import: true,
+        is_featured: false,
+        created_at: "2026-11-22T00:00:00Z",
+      };
+      let exists = true;
+      const fetchMock = vi.fn((request: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(request);
+        if (url === "/api/batches") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ batches: exists ? [batch] : [] }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        if (url.startsWith(`/api/batches/${batchId}/items?`)) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                batch,
+                items: [
+                  {
+                    row_number: 1,
+                    name: "Santi Endu",
+                    pcs: 2,
+                    weight_kg: "1.5",
+                    price: 24000,
+                    tracking_code: "ELK-123",
+                    status: "Belum diverifikasi",
+                  },
+                ],
+                hasMore: false,
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }
+        if (url === `/api/batches/${batchId}` && init?.method === "DELETE") {
+          exists = false;
+          return Promise.resolve(
+            new Response(JSON.stringify({ deletedPackages: 1 }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+
+      render(
+        <DashboardContext.Provider
+          value={{ user: { id: "owner-id", email: "owner@example.com", role: "owner" } }}
+        >
+          <BatchUploadPage />
+        </DashboardContext.Provider>,
+      );
+
+      fireEvent.click(await screen.findByRole("button", { name: "Unduh PDF" }));
+      await waitFor(() => {
+        expect(createBatchPdf).toHaveBeenCalledWith(
+          expect.objectContaining({ id: batchId }),
+          expect.arrayContaining([expect.objectContaining({ tracking_code: "ELK-123" })]),
+        );
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Hapus" }));
+      expect(await screen.findByText("Belum ada batch pengiriman.")).toBeVisible();
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/batches/${batchId}`,
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
+  it("opens a batch and loads its barcode packages for download or printing", async () => {
+    const batchId = "00000000-0000-4000-8000-000000000001";
+    const fetchMock = vi.fn((request: RequestInfo | URL) => {
+      const url = String(request);
+      const payload =
+        url === "/api/batches"
+          ? {
+              batches: [
+                {
+                  id: batchId,
+                  title: "BATCH 34",
+                  destination: "Bajawa",
+                  package_count: 2,
+                  archived_package_count: 0,
+                },
+              ],
+            }
+          : {
+              packages: [
+                {
+                  id: `package-${new URL(url, "http://localhost").searchParams.get("offset")}`,
+                  batch_id: batchId,
+                  tracking_code:
+                    new URL(url, "http://localhost").searchParams.get("offset") === "0"
+                      ? "ELK-123"
+                      : "ELK-456",
+                  recipient_name:
+                    new URL(url, "http://localhost").searchParams.get("offset") === "0"
+                      ? "Santi Endu"
+                      : "Penerima kedua",
+                  destination: "Bajawa",
+                  pcs: 2,
+                  weight_kg: "1.5",
+                  total_price: 24000,
+                  verified_at: null,
+                  paid_at: null,
+                  collected_at: null,
+                  created_at: "2026-11-22T00:00:00Z",
+                  barcodeToken: "barcode-token",
+                },
+              ],
+              hasMore: new URL(url, "http://localhost").searchParams.get("offset") === "0",
+              nextOffset: Number(new URL(url, "http://localhost").searchParams.get("offset")) + 1,
+            };
+      return Promise.resolve(
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <DashboardContext.Provider
+        value={{ user: { id: "owner-id", email: "owner@example.com", role: "owner" } }}
+      >
+        <BarcodeLibraryPage />
+      </DashboardContext.Provider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /BATCH 34/ }));
+
+    expect(await screen.findByText("Santi Endu")).toBeVisible();
+    expect(await screen.findByText("Penerima kedua")).toBeVisible();
+    expect(screen.getAllByRole("button", { name: /Unduh PNG/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /Cetak barcode ini/ })).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`batchId=${batchId}`),
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("offset=1"), expect.any(Object));
   });
 });

@@ -2315,6 +2315,72 @@ html {
   gap: 0.8rem;
 }
 
+.ops-barcode-batches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 0.8rem;
+}
+
+.ops-barcode-batch-card {
+  display: grid;
+  min-height: 132px;
+  align-content: start;
+  justify-items: start;
+  gap: 0.55rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--brand-ink);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.ops-barcode-batch-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-burgundy);
+  background: color-mix(in oklab, var(--brand-paper) 70%, var(--background));
+}
+
+.ops-barcode-batch-card:focus-visible {
+  outline: 2px solid var(--brand-burgundy);
+  outline-offset: 3px;
+}
+
+.ops-barcode-batch-card strong {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.05rem;
+}
+
+.ops-barcode-batch-card > span:last-child {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+}
+
+.ops-barcode-batch-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.ops-barcode-batch-detail .ops-eyebrow {
+  margin: 0;
+}
+
+.ops-barcode-batch-detail h2 {
+  margin: 0.3rem 0 0;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.1rem;
+}
+
 .ops-batch-page {
   display: grid;
   gap: 1.25rem;
@@ -2352,6 +2418,16 @@ html {
 .ops-batch-feature:disabled {
   cursor: not-allowed;
   opacity: 0.62;
+}
+
+.ops-batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.ops-batch-actions .ops-button {
+  white-space: nowrap;
 }
 
 .ops-batch-grid {
@@ -3093,6 +3169,11 @@ html {
   .ops-barcode-library__heading-actions > * {
     flex: 1 1 auto;
     justify-content: center;
+  }
+
+  .ops-barcode-batch-detail {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .ops-stats {

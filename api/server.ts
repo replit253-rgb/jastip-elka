@@ -242,8 +242,8 @@ async function appendPackageBatchItem(
   );
   await client.query(
     `INSERT INTO package_batch_items
-     (id, batch_id, package_id, row_number, name, pcs, weight_kg, price, note)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+     (id, batch_id, package_id, row_number, name, pcs, weight_kg, price, note, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'manual')`,
     [
       randomUUID(),
       batchId,
@@ -585,15 +585,111 @@ async function startServer() {
     try {
       const result = await pool.query(
         `SELECT b.id, b.title, b.destination, b.is_featured, b.created_at,
-           count(i.id)::int AS item_count
+           count(DISTINCT i.id)::int AS item_count,
+           count(DISTINCT p.id) FILTER (WHERE p.archived_at IS NULL)::int AS package_count,
+           count(DISTINCT p.id) FILTER (WHERE p.archived_at IS NOT NULL)::int AS archived_package_count,
+           coalesce(bool_or(i.source = 'excel' AND i.package_id IS NOT NULL), false) AS has_excel_import
          FROM package_batches b
          LEFT JOIN package_batch_items i ON i.batch_id = b.id
+         LEFT JOIN packages p ON p.batch_id = b.id
          GROUP BY b.id
          ORDER BY b.created_at DESC`,
       );
       response.json({ batches: result.rows });
     } catch (error) {
       next(error);
+    }
+  });
+
+  app.get("/api/batches/:id/items", requireOwner, async (request, response, next) => {
+    try {
+      const batchId = z.string().uuid().parse(request.params["id"]);
+      const limit = z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .default(500)
+        .parse(request.query["limit"] ?? "500");
+      const offset = z.coerce
+        .number()
+        .int()
+        .min(0)
+        .max(1_000_000)
+        .default(0)
+        .parse(request.query["offset"] ?? "0");
+      const batchResult = await pool.query<{ id: string; title: string; destination: string }>(
+        "SELECT id, title, destination FROM package_batches WHERE id = $1",
+        [batchId],
+      );
+      const batch = batchResult.rows[0];
+      if (!batch) throw new WorkflowError("Batch tidak ditemukan.", 404);
+      const [count, items] = await Promise.all([
+        pool.query<{ total: number }>(
+          "SELECT count(*)::int AS total FROM package_batch_items WHERE batch_id = $1",
+          [batchId],
+        ),
+        pool.query(
+          `SELECT i.row_number, i.name, i.pcs, i.weight_kg, i.price, i.note,
+             p.tracking_code, p.archived_at, p.verified_at, p.paid_at, p.collected_at,
+             CASE
+               WHEN p.id IS NULL THEN 'Belum ada barcode'
+               WHEN p.archived_at IS NOT NULL THEN 'Diarsipkan'
+               WHEN p.collected_at IS NOT NULL THEN 'Diambil'
+               WHEN p.paid_at IS NOT NULL THEN 'Siap diambil'
+               WHEN p.verified_at IS NOT NULL THEN 'Menunggu pembayaran'
+               ELSE 'Belum diverifikasi'
+             END AS status
+           FROM package_batch_items i
+           LEFT JOIN packages p ON p.id = i.package_id
+           WHERE i.batch_id = $1
+           ORDER BY i.row_number, i.id
+           LIMIT $2 OFFSET $3`,
+          [batchId, limit, offset],
+        ),
+      ]);
+      const total = count.rows[0]?.total ?? 0;
+      response.json({
+        batch,
+        items: items.rows,
+        total,
+        offset,
+        limit,
+        hasMore: offset + items.rows.length < total,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/batches/:id", requireOwner, async (request, response, next) => {
+    const client = await pool.connect();
+    try {
+      const batchId = z.string().uuid().parse(request.params["id"]);
+      await client.query("BEGIN");
+      const batch = await client.query<{ id: string }>(
+        "SELECT id FROM package_batches WHERE id = $1 FOR UPDATE",
+        [batchId],
+      );
+      if (!batch.rows[0]) throw new WorkflowError("Batch tidak ditemukan.", 404);
+      const packageCount = await client.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM packages WHERE batch_id = $1",
+        [batchId],
+      );
+      await client.query(
+        `DELETE FROM package_events
+         WHERE package_id IN (SELECT id FROM packages WHERE batch_id = $1)`,
+        [batchId],
+      );
+      await client.query("DELETE FROM packages WHERE batch_id = $1", [batchId]);
+      await client.query("DELETE FROM package_batches WHERE id = $1", [batchId]);
+      await client.query("COMMIT");
+      response.json({ batchId, deletedPackages: packageCount.rows[0]?.count ?? 0 });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
     }
   });
 
@@ -605,12 +701,12 @@ async function startServer() {
           items: z
             .array(
               z.object({
-                rowNumber: z.number().int().min(1),
-                name: z.string().trim().min(1).max(160),
-                pcs: z.number().int().min(0).max(100000),
-                weightKg: z.number().min(0).max(100000),
+                rowNumber: z.number().int().min(1).max(1000),
+                name: z.string().trim().min(2).max(120),
+                pcs: z.number().int().min(1).max(10000),
+                weightKg: z.number().min(0.01).max(500).multipleOf(0.01),
                 price: z.number().int().min(0).max(100000000),
-                note: z.string().trim().max(500).default(""),
+                note: z.string().trim().max(250).default(""),
               }),
             )
             .min(1)
@@ -618,13 +714,27 @@ async function startServer() {
         })
         .parse(request.body);
       const client = await pool.connect();
+      const staff = request.staffUser!;
       try {
         await client.query("BEGIN");
-        const batch = await client.query<{ id: string }>(
-          "SELECT id FROM package_batches WHERE id = $1 FOR UPDATE",
+        const batch = await client.query<{ id: string; destination: string }>(
+          "SELECT id, destination FROM package_batches WHERE id = $1 FOR UPDATE",
           [batchId],
         );
-        if (!batch.rows[0]) throw new WorkflowError("Batch tidak ditemukan.", 404);
+        const selectedBatch = batch.rows[0];
+        if (!selectedBatch) throw new WorkflowError("Batch tidak ditemukan.", 404);
+        const previousImport = await client.query(
+          `SELECT 1 FROM package_batch_items
+           WHERE batch_id = $1 AND source = 'excel' AND package_id IS NOT NULL
+           LIMIT 1`,
+          [batchId],
+        );
+        if (previousImport.rows.length) {
+          throw new WorkflowError(
+            "Batch ini sudah memiliki paket hasil impor Excel. Hapus batch dan buat ulang untuk mengganti data agar barcode lama tidak tertukar.",
+            409,
+          );
+        }
         await client.query(
           "DELETE FROM package_batch_items WHERE batch_id = $1 AND package_id IS NULL",
           [batchId],
@@ -635,14 +745,51 @@ async function startServer() {
           [batchId],
         );
         const rowOffset = existingRows.rows[0]?.next_row ?? 1;
+        const setting = await client.query<{ setting_value: string }>(
+          "SELECT setting_value FROM app_settings WHERE setting_key = 'price_per_kg' FOR SHARE",
+        );
+        const defaultPricePerKg = Number(setting.rows[0]?.setting_value);
+        if (!Number.isSafeInteger(defaultPricePerKg) || defaultPricePerKg < 1) {
+          throw new Error("Tarif per kilogram belum tersedia atau tidak valid.");
+        }
+
         for (const item of input.items) {
+          const packageId = randomUUID();
+          const trackingCode = `ELK-${randomBytes(6).toString("hex").toUpperCase()}`;
+          const barcodeToken = createBarcodeToken(packageId, barcodeSecret);
+          const pricePerKg =
+            item.price > 0
+              ? Math.min(2_147_483_647, Math.max(1, Math.round(item.price / item.weightKg)))
+              : defaultPricePerKg;
+          await client.query(
+            `INSERT INTO packages (
+              id, batch_id, tracking_code, recipient_name, destination, description, pcs,
+              weight_kg, price_per_kg, total_price, barcode_hash, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [
+              packageId,
+              batchId,
+              trackingCode,
+              item.name,
+              selectedBatch.destination,
+              item.note,
+              item.pcs,
+              item.weightKg,
+              pricePerKg,
+              item.price,
+              hashToken(barcodeToken),
+              staff.id,
+            ],
+          );
+          await writePackageEvent(client, packageId, staff.id, "created");
           await client.query(
             `INSERT INTO package_batch_items
-             (id, batch_id, row_number, name, pcs, weight_kg, price, note)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             (id, batch_id, package_id, row_number, name, pcs, weight_kg, price, note, source)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'excel')`,
             [
               randomUUID(),
               batchId,
+              packageId,
               rowOffset + item.rowNumber - 1,
               item.name,
               item.pcs,
@@ -653,7 +800,11 @@ async function startServer() {
           );
         }
         await client.query("COMMIT");
-        response.json({ batchId, imported: input.items.length });
+        response.json({
+          batchId,
+          imported: input.items.length,
+          barcodesGenerated: input.items.length,
+        });
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;
@@ -941,14 +1092,18 @@ async function startServer() {
       const archived =
         z.enum(["true", "false"]).default("false").parse(request.query["archived"]) === "true";
       if (archived) assertOwnerRole(request.staffUser!.role);
+      const batchId = z.string().uuid().optional().parse(request.query["batchId"]);
+      const batchFilter = batchId ? "AND batch_id = $3" : "";
+      const queryValues: Array<string | number> = [limit + 1, offset];
+      if (batchId) queryValues.push(batchId);
       const result = await pool.query(
         `SELECT id, batch_id, tracking_code, recipient_name, recipient_phone, sender_name, destination,
           description, pcs, weight_kg, price_per_kg, total_price, verified_at, paid_at, collected_at,
           archived_at, created_at
          FROM packages
-         WHERE archived_at IS ${archived ? "NOT " : ""}NULL
+         WHERE archived_at IS ${archived ? "NOT " : ""}NULL ${batchFilter}
          ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-        [limit + 1, offset],
+        queryValues,
       );
       const rows = result.rows.slice(0, limit);
       response.json({

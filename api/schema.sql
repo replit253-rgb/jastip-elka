@@ -114,11 +114,15 @@ CREATE TABLE IF NOT EXISTS package_batch_items (
   pcs integer NOT NULL DEFAULT 0 CHECK (pcs >= 0),
   weight_kg numeric(7, 2) NOT NULL DEFAULT 0 CHECK (weight_kg >= 0),
   price integer NOT NULL DEFAULT 0 CHECK (price >= 0),
-  note text NOT NULL DEFAULT ''
+  note text NOT NULL DEFAULT '',
+  source text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'excel'))
 );
 
 ALTER TABLE package_batch_items
   ADD COLUMN IF NOT EXISTS package_id uuid REFERENCES packages(id) ON DELETE SET NULL;
+ALTER TABLE package_batch_items
+  ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual'
+  CHECK (source IN ('manual', 'excel'));
 
 CREATE UNIQUE INDEX IF NOT EXISTS package_batch_items_package_idx
   ON package_batch_items (package_id) WHERE package_id IS NOT NULL;
