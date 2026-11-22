@@ -79,6 +79,29 @@ CREATE TABLE IF NOT EXISTS announcements (
 CREATE INDEX IF NOT EXISTS announcements_public_idx
   ON announcements (created_at DESC) WHERE is_published = true;
 
+CREATE TABLE IF NOT EXISTS package_batches (
+  id uuid PRIMARY KEY,
+  title text NOT NULL CHECK (char_length(title) BETWEEN 2 AND 80),
+  destination text NOT NULL CHECK (destination IN ('Bajawa', 'Malanuza', 'Aimere')),
+  created_by uuid NOT NULL REFERENCES staff_users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (title, destination)
+);
+
+CREATE TABLE IF NOT EXISTS package_batch_items (
+  id uuid PRIMARY KEY,
+  batch_id uuid NOT NULL REFERENCES package_batches(id) ON DELETE CASCADE,
+  row_number integer NOT NULL CHECK (row_number >= 1),
+  name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 160),
+  pcs integer NOT NULL DEFAULT 0 CHECK (pcs >= 0),
+  weight_kg numeric(7, 2) NOT NULL DEFAULT 0 CHECK (weight_kg >= 0),
+  price integer NOT NULL DEFAULT 0 CHECK (price >= 0),
+  note text NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS package_batch_items_batch_idx
+  ON package_batch_items (batch_id, row_number);
+
 CREATE TABLE IF NOT EXISTS customer_reviews (
   id uuid PRIMARY KEY,
   author_name text NOT NULL CHECK (char_length(author_name) BETWEEN 2 AND 80),

@@ -14,6 +14,7 @@ import {
   ScanLine,
   Settings2,
   Star,
+  Upload,
 } from "lucide-react";
 
 import { DashboardContext, type StaffUser } from "@/components/operations-dashboard-context";
@@ -37,6 +38,7 @@ const navigation = [
   { to: "/dashboard/scan", label: "Scan barcode", icon: ScanLine },
   { to: "/dashboard/pembayaran", label: "Pembayaran", icon: BadgeDollarSign },
   { to: "/dashboard/informasi", label: "Informasi owner", icon: Megaphone },
+  { to: "/dashboard/batch", label: "Daftar batch Excel", icon: Upload },
   { to: "/dashboard/ulasan", label: "Moderasi ulasan", icon: Star },
   { to: "/dashboard/pengaturan", label: "Pengaturan harga", icon: Settings2 },
 ] as const;

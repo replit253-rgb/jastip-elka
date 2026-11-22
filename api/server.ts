@@ -241,8 +241,105 @@ async function startServer() {
 
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "32kb" }));
+  app.use(express.json({ limit: "2mb" }));
   app.get("/api/health", (_request, response) => response.json({ status: "ok" }));
+
+  app.get(
+    "/api/public/tracking/:trackingCode",
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: 60,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+    }),
+    async (request, response, next) => {
+      try {
+        const trackingCode = z
+          .string()
+          .trim()
+          .toUpperCase()
+          .regex(/^ELK-[A-F0-9]{12}$/)
+          .parse(request.params["trackingCode"]);
+        const result = await pool.query<{
+          id: string;
+          tracking_code: string;
+          destination: string;
+          verified_at: Date | null;
+          paid_at: Date | null;
+          collected_at: Date | null;
+          created_at: Date;
+        }>(
+          `SELECT id, tracking_code, destination, verified_at, paid_at, collected_at, created_at
+           FROM packages
+           WHERE tracking_code = $1 AND archived_at IS NULL`,
+          [trackingCode],
+        );
+        const packageRow = result.rows[0];
+        if (!packageRow) {
+          response.json({ tracking: null });
+          return;
+        }
+
+        const history = await pool.query<{ action: string; created_at: Date }>(
+          `SELECT action, created_at FROM package_events
+           WHERE package_id = $1 ORDER BY created_at ASC`,
+          [packageRow.id],
+        );
+        const eventLabels: Record<string, string> = {
+          created: "Paket diterima di Surabaya",
+          verify: "Paket dikirim menuju Flores",
+          payment: "Posisi paket diperbarui",
+          collect: "Paket berada di titik pengambilan",
+        };
+        const events = history.rows.map((item) => ({
+          label: eventLabels[item.action] ?? "Status paket diperbarui",
+          detail: new Intl.DateTimeFormat("id-ID", {
+            dateStyle: "medium",
+            timeStyle: "short",
+            timeZone: "Asia/Jakarta",
+          }).format(item.created_at),
+        }));
+        const status = packageRow.collected_at
+          ? "Sudah diambil"
+          : packageRow.paid_at
+            ? "Paket sudah tiba di tujuan"
+            : packageRow.verified_at
+              ? "Paket dalam perjalanan menuju Flores"
+              : "Paket diterima di Surabaya";
+        const location = packageRow.collected_at
+          ? `Paket telah diambil di titik ${packageRow.destination}.`
+          : packageRow.paid_at
+            ? `Paket berada di titik pengambilan ${packageRow.destination}.`
+            : packageRow.verified_at
+              ? "Paket dalam perjalanan laut melalui rute Ende menuju Flores."
+              : "Paket masih di tempat kumpul admin Surabaya.";
+
+        response.json({
+          tracking: {
+            code: packageRow.tracking_code,
+            status,
+            destination: packageRow.destination,
+            location,
+            events:
+              events.length > 0
+                ? events
+                : [
+                    {
+                      label: "Paket terdaftar",
+                      detail: new Intl.DateTimeFormat("id-ID", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                        timeZone: "Asia/Jakarta",
+                      }).format(packageRow.created_at),
+                    },
+                  ],
+          },
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   app.get("/api/public/announcements", async (_request, response, next) => {
     try {
@@ -254,6 +351,45 @@ async function startServer() {
          LIMIT 5`,
       );
       response.json({ announcements: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/public/batches", async (_request, response, next) => {
+    try {
+      const batches = await pool.query<{
+        id: string;
+        title: string;
+        destination: string;
+        created_at: Date;
+      }>(
+        `SELECT id, title, destination, created_at
+         FROM package_batches
+         ORDER BY created_at DESC`,
+      );
+      const items = await pool.query<{
+        batch_id: string;
+        row_number: number;
+        name: string;
+        pcs: number;
+      }>(
+        `SELECT batch_id, row_number, name, pcs
+         FROM package_batch_items
+         ORDER BY batch_id, row_number`,
+      );
+      const itemsByBatch = new Map<string, typeof items.rows>();
+      for (const item of items.rows) {
+        const batchItems = itemsByBatch.get(item.batch_id) ?? [];
+        batchItems.push(item);
+        itemsByBatch.set(item.batch_id, batchItems);
+      }
+      response.json({
+        batches: batches.rows.map((batch) => ({
+          ...batch,
+          items: itemsByBatch.get(batch.id) ?? [],
+        })),
+      });
     } catch (error) {
       next(error);
     }
@@ -340,6 +476,98 @@ async function startServer() {
   app.use("/api", requireStaff(pool, sessionSecret));
 
   app.get("/api/auth/me", (request, response) => response.json({ user: request.staffUser }));
+
+  app.post("/api/batches", requireOwner, async (request, response, next) => {
+    try {
+      const input = z
+        .object({
+          title: z.string().trim().min(2).max(80),
+          destination: z.enum(["Bajawa", "Malanuza", "Aimere"]),
+          items: z
+            .array(
+              z.object({
+                rowNumber: z.number().int().min(1),
+                name: z.string().trim().min(1).max(160),
+                pcs: z.number().int().min(0).max(100000),
+                weightKg: z.number().min(0).max(100000),
+                price: z.number().int().min(0).max(100000000),
+                note: z.string().trim().max(500).default(""),
+              }),
+            )
+            .min(1)
+            .max(1000),
+        })
+        .parse(request.body);
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const existing = await client.query<{ id: string }>(
+          "SELECT id FROM package_batches WHERE title = $1 AND destination = $2",
+          [input.title, input.destination],
+        );
+        let batchId: string;
+        if (existing.rows[0]) {
+          batchId = existing.rows[0].id;
+          await client.query("DELETE FROM package_batch_items WHERE batch_id = $1", [batchId]);
+          await client.query(
+            "UPDATE package_batches SET created_at = now() WHERE id = $1",
+            [batchId],
+          );
+        } else {
+          batchId = randomUUID();
+          await client.query(
+            `INSERT INTO package_batches (id, title, destination, created_by)
+             VALUES ($1, $2, $3, $4)`,
+            [batchId, input.title, input.destination, request.staffUser!.id],
+          );
+        }
+        for (const item of input.items) {
+          await client.query(
+            `INSERT INTO package_batch_items
+             (id, batch_id, row_number, name, pcs, weight_kg, price, note)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+              randomUUID(),
+              batchId,
+              item.rowNumber,
+              item.name,
+              item.pcs,
+              item.weightKg,
+              item.price,
+              item.note,
+            ],
+          );
+        }
+        await client.query("COMMIT");
+        response.status(201).json({
+          batch: { id: batchId, title: input.title, destination: input.destination },
+        });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/batches", async (_request, response, next) => {
+    try {
+      const result = await pool.query(
+        `SELECT b.id, b.title, b.destination, b.created_at, count(i.id)::int AS item_count
+         FROM package_batches b
+         LEFT JOIN package_batch_items i ON i.batch_id = b.id
+         GROUP BY b.id
+         ORDER BY b.created_at DESC`,
+      );
+      response.json({ batches: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.post("/api/auth/logout", async (request, response, next) => {
     const token = cookieValue(request, "elkana_session");

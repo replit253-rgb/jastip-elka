@@ -21,6 +21,8 @@ Website menampilkan titik pengambilan di Bajawa, Malanuza, dan Aimere. Pelanggan
 
 Barcode QR yang dibuat saat input paket yang sama dipakai untuk verifikasi, konfirmasi pembayaran manual, dan pengambilan. Barcode dapat diunduh sebagai PNG, ditampilkan saat owner mengedit paket, dan dipindai melalui kamera atau gambar yang diunggah. Paket harus diverifikasi sebelum pembayaran dicatat, dan harus lunas sebelum pengambilan dikonfirmasi. Kamera memerlukan izin browser dan secure context; alternatif lainnya, tempelkan data hasil scan pada halaman pemindai. Integrasi payment gateway belum diaktifkan.
 
+Halaman tracking publik mencari nomor paket aktif berformat `ELK-` diikuti 12 digit heksadesimal dan menampilkan status serta riwayat yang tercatat oleh admin. Nomor simulasi tidak digunakan untuk hasil tracking.
+
 Sebelum menjalankan versi yang menambahkan kolom arsip di server yang sudah ada, terapkan skema dengan `npm run db push`, lalu build dan restart aplikasi. Perintah migrasi bersifat idempoten.
 
 Variabel yang dibutuhkan tercantum di `.env.example`. Jangan mengganti `BARCODE_SECRET` setelah barcode dibuat karena signature label lama tidak akan berlaku lagi.

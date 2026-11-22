@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowDownRight,
@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AnnouncementSection, ReviewsSection } from "@/components/public-content";
+import { apiRequest } from "@/lib/operations-api";
 
 const ferryImage = "/1.jpeg";
 const portImage = "/2.jpeg";
@@ -231,6 +232,98 @@ function SectionHeading({
   );
 }
 
+type PublicBatch = {
+  id: string;
+  title: string;
+  destination: string;
+  created_at: string;
+  items: { row_number: number; name: string; pcs: number }[];
+};
+
+export function BatchListSection() {
+  const [batches, setBatches] = useState<PublicBatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [destination, setDestination] = useState("Bajawa");
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<{ batches: PublicBatch[] }>("/api/public/batches")
+      .then((result) => {
+        if (active) setBatches(result.batches);
+      })
+      .catch(() => {
+        if (active) setBatches([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const visibleBatches = batches.filter((batch) => batch.destination === destination);
+
+  return (
+    <section className="section batch-list-section" id="daftar-batch">
+      <div className="container">
+        <SectionHeading
+          eyebrow="Daftar penerima paket"
+          title="LIST PAKET PER BATCH"
+          description="Cari nama penerima pada batch tujuanmu."
+        />
+        <div className="batch-list__tabs" role="tablist" aria-label="Lokasi tujuan batch">
+          {["Bajawa", "Malanuza", "Aimere"].map((item) => (
+            <button
+              key={item}
+              type="button"
+              role="tab"
+              aria-selected={destination === item}
+              className={destination === item ? "is-active" : ""}
+              onClick={() => setDestination(item)}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+        {loading ? (
+          <p className="batch-list__state">Memuat daftar batch...</p>
+        ) : visibleBatches.length ? (
+          <div className="batch-list__groups">
+            {visibleBatches.map((batch) => (
+              <article className="batch-list__card" key={batch.id}>
+                <h3>LIST PAKET {batch.destination.toUpperCase()} {batch.title.toUpperCase()}</h3>
+                <div className="batch-list__table-wrap">
+                  <table className="batch-list__table">
+                    <thead>
+                      <tr>
+                        <th>NO.</th>
+                        <th>NAMA</th>
+                        <th>PCS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {batch.items.map((item) => (
+                        <tr key={`${batch.id}-${item.row_number}`}>
+                          <td>{item.row_number}</td>
+                          <td>{item.name}</td>
+                          <td>{item.pcs}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="batch-list__state">Belum ada daftar paket untuk tujuan {destination}.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function PickupPointSection() {
   return (
     <section className="section section--paper pickup-points">
@@ -238,7 +331,7 @@ function PickupPointSection() {
         <SectionHeading
           eyebrow="Pick up point"
           title="Titik pengambilan paket."
-          description="Pilih loket sesuai tujuan. Admin akan mengabari saat paket siap diambil."
+          description="Pilih lokasi pengambilan sesuai tujuan. Admin akan mengabari saat paket tiba dan siap diambil."
         />
         <div className="destination-grid">
           {pickupPoints.map((point) => (
@@ -258,12 +351,14 @@ function WhatsappCommunitySection() {
   return (
     <section className="section section--paper community-section">
       <div className="container community-section__inner">
-        <img
-          src="/grup.jpeg"
-          alt="Grup WhatsApp komunitas ELKANA JASTIP"
-          className="community-section__image"
-          loading="lazy"
-        />
+        <div className="community-section__qr">
+          <img
+            src="/grup-qr.png"
+            alt="QR code untuk bergabung ke grup WhatsApp ELKANA JASTIP"
+            loading="lazy"
+          />
+          <span>Scan di sini</span>
+        </div>
         <div className="community-section__content">
           <p className="eyebrow">Terhubung dengan ELKANA</p>
           <h2 className="section-title">Gabung grup WhatsApp kami.</h2>
@@ -309,6 +404,9 @@ export function HomePage() {
                 <Search aria-hidden="true" /> Lacak paket
               </Link>
             </Button>
+            <a className="hero-batch-link" href="#daftar-batch">
+              <Box aria-hidden="true" /> Cek daftar batch
+            </a>
           </div>
           <div className="hero-route-note">
             <span>RUTE</span>
@@ -344,6 +442,7 @@ export function HomePage() {
       </section>
 
       <AnnouncementSection />
+      <BatchListSection />
       <PickupPointSection />
       <WhatsappCommunitySection />
 
@@ -661,55 +760,40 @@ type TrackingRecord = {
   events: { label: string; detail: string }[];
 };
 
-const sampleShipments: TrackingRecord[] = [
-  {
-    code: "EJK-26001",
-    status: "Siap diambil",
-    destination: "Bajawa",
-    location: "Titik pengambilan Bajawa — detail dikonfirmasi admin",
-    events: [
-      { label: "Paket diterima admin", detail: "Tempat kumpul Surabaya" },
-      { label: "Paket diberangkatkan", detail: "Kapal laut, transit Ende" },
-      { label: "Paket tiba di tujuan", detail: "Siap diambil di Bajawa" },
-    ],
-  },
-  {
-    code: "EJK-26002",
-    status: "Dalam perjalanan",
-    destination: "Aimere",
-    location: "Menuju Aimere via Ende",
-    events: [
-      { label: "Paket diterima admin", detail: "Tempat kumpul Surabaya" },
-      { label: "Paket diberangkatkan", detail: "Kapal Dharma Rucitra 8" },
-      { label: "Paket menuju tujuan", detail: "Transit di Ende" },
-    ],
-  },
-];
-
 export function TrackingPage() {
   const [code, setCode] = useState("");
   const [searched, setSearched] = useState(false);
   const [record, setRecord] = useState<TrackingRecord | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalizedCode = code.trim().toUpperCase();
-    setRecord(sampleShipments.find((shipment) => shipment.code === normalizedCode) ?? null);
-    setSearched(true);
-  }
-
-  function selectSample(sampleCode: string) {
-    setCode(sampleCode);
-    setRecord(sampleShipments.find((shipment) => shipment.code === sampleCode) ?? null);
-    setSearched(true);
+    setCode(normalizedCode);
+    setSearched(false);
+    setRecord(null);
+    setError("");
+    setLoading(true);
+    try {
+      const result = await apiRequest<{ tracking: TrackingRecord | null }>(
+        `/api/public/tracking/${encodeURIComponent(normalizedCode)}`,
+      );
+      setRecord(result.tracking);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Status paket gagal dimuat.");
+    } finally {
+      setLoading(false);
+      setSearched(true);
+    }
   }
 
   return (
     <main>
       <PageIntro
         label="Tracking Paket"
-        title="Cari tahu perjalanan paketmu."
-        description="Masukkan nomor paket untuk melihat contoh status pengiriman dari Surabaya menuju area tujuan."
+        title="Cari tahu posisi paketmu."
+        description="Masukkan nomor paket untuk melihat lokasi dan perjalanan paket tanpa informasi berat atau harga."
       />
       <section className="section">
         <div className="container tracking-layout">
@@ -721,34 +805,31 @@ export function TrackingPage() {
               <Input
                 className="tracking-input"
                 aria-label="Nomor tracking paket"
-                placeholder="Contoh: EJK-26001"
+                placeholder="Contoh: ELK-4E48D390F622"
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
                 required
               />
-              <Button type="submit">
-                <Search aria-hidden="true" /> Lacak
+              <Button type="submit" disabled={loading}>
+                <Search aria-hidden="true" /> {loading ? "Mencari..." : "Lacak"}
               </Button>
             </form>
-            <div className="tracking-samples" aria-label="Contoh nomor paket">
-              {sampleShipments.map((shipment) => (
-                <button
-                  className="tracking-sample"
-                  key={shipment.code}
-                  type="button"
-                  onClick={() => selectSample(shipment.code)}
-                >
-                  {shipment.code}
-                </button>
-              ))}
-            </div>
-            <p className="demo-note mt-3">
-              Nomor di atas adalah data simulasi untuk tampilan depan.
-            </p>
           </div>
 
           <div aria-live="polite">
-            {record ? (
+            {loading ? (
+              <section className="tracking-result">
+                <p className="eyebrow">Sedang mencari</p>
+                <h2 className="mt-4">Memeriksa status paket...</h2>
+              </section>
+            ) : error ? (
+              <section className="tracking-result">
+                <span className="tracking-result__status">Tracking tidak tersedia</span>
+                <h2 className="mt-4">Status paket belum dapat dimuat.</h2>
+                <p>{error}</p>
+                <p>Silakan coba lagi atau hubungi admin ELKANA.</p>
+              </section>
+            ) : record ? (
               <section className="tracking-result">
                 <span className="tracking-result__status">
                   <PackageCheck size={15} aria-hidden="true" /> {record.status}
@@ -772,7 +853,6 @@ export function TrackingPage() {
                     </div>
                   ))}
                 </div>
-                <p className="demo-note">Contoh status. Informasi paket asli belum terhubung.</p>
               </section>
             ) : searched ? (
               <section className="tracking-result">

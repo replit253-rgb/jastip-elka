@@ -19,6 +19,7 @@ import { Route as TentangKamiRouteImport } from './routes/tentang-kami'
 import { Route as TrackingPaketRouteImport } from './routes/tracking-paket'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as DashboardBarcodeRouteImport } from './routes/dashboard.barcode'
+import { Route as DashboardBatchRouteImport } from './routes/dashboard.batch'
 import { Route as DashboardInformasiRouteImport } from './routes/dashboard.informasi'
 import { Route as DashboardPaketBaruRouteImport } from './routes/dashboard.paket-baru'
 import { Route as DashboardPembayaranRouteImport } from './routes/dashboard.pembayaran'
@@ -76,6 +77,11 @@ const DashboardBarcodeRoute = DashboardBarcodeRouteImport.update({
   path: '/barcode',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardBatchRoute = DashboardBatchRouteImport.update({
+  id: '/batch',
+  path: '/batch',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardInformasiRoute = DashboardInformasiRouteImport.update({
   id: '/informasi',
   path: '/informasi',
@@ -117,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/tentang-kami': typeof TentangKamiRoute
   '/tracking-paket': typeof TrackingPaketRoute
   '/dashboard/barcode': typeof DashboardBarcodeRoute
+  '/dashboard/batch': typeof DashboardBatchRoute
   '/dashboard/informasi': typeof DashboardInformasiRoute
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByTo {
   '/tentang-kami': typeof TentangKamiRoute
   '/tracking-paket': typeof TrackingPaketRoute
   '/dashboard/barcode': typeof DashboardBarcodeRoute
+  '/dashboard/batch': typeof DashboardBatchRoute
   '/dashboard/informasi': typeof DashboardInformasiRoute
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
@@ -153,6 +161,7 @@ export interface FileRoutesById {
   '/tentang-kami': typeof TentangKamiRoute
   '/tracking-paket': typeof TrackingPaketRoute
   '/dashboard/barcode': typeof DashboardBarcodeRoute
+  '/dashboard/batch': typeof DashboardBatchRoute
   '/dashboard/informasi': typeof DashboardInformasiRoute
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
@@ -173,6 +182,7 @@ export interface FileRouteTypes {
     | '/tentang-kami'
     | '/tracking-paket'
     | '/dashboard/barcode'
+    | '/dashboard/batch'
     | '/dashboard/informasi'
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
@@ -190,6 +200,7 @@ export interface FileRouteTypes {
     | '/tentang-kami'
     | '/tracking-paket'
     | '/dashboard/barcode'
+    | '/dashboard/batch'
     | '/dashboard/informasi'
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
@@ -208,6 +219,7 @@ export interface FileRouteTypes {
     | '/tentang-kami'
     | '/tracking-paket'
     | '/dashboard/barcode'
+    | '/dashboard/batch'
     | '/dashboard/informasi'
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
@@ -300,6 +312,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardBarcodeRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/batch': {
+      id: '/dashboard/batch'
+      path: '/batch'
+      fullPath: '/dashboard/batch'
+      preLoaderRoute: typeof DashboardBatchRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/informasi': {
       id: '/dashboard/informasi'
       path: '/informasi'
@@ -347,6 +366,7 @@ declare module '@tanstack/react-router' {
 
 interface DashboardRouteChildren {
   DashboardBarcodeRoute: typeof DashboardBarcodeRoute
+  DashboardBatchRoute: typeof DashboardBatchRoute
   DashboardInformasiRoute: typeof DashboardInformasiRoute
   DashboardPaketBaruRoute: typeof DashboardPaketBaruRoute
   DashboardPembayaranRoute: typeof DashboardPembayaranRoute
@@ -358,6 +378,7 @@ interface DashboardRouteChildren {
 
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardBarcodeRoute: DashboardBarcodeRoute,
+  DashboardBatchRoute: DashboardBatchRoute,
   DashboardInformasiRoute: DashboardInformasiRoute,
   DashboardPaketBaruRoute: DashboardPaketBaruRoute,
   DashboardPembayaranRoute: DashboardPembayaranRoute,
