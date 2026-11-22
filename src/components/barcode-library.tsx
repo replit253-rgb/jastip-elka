@@ -23,11 +23,21 @@ type BatchSummary = {
   archived_package_count: number;
 };
 
-export function BarcodeLibraryPage() {
+type BarcodeLibraryPageProps = {
+  selectedBatchId?: string;
+  onSelectBatch?: (batchId: string) => void;
+  onBackToBatches?: () => void;
+};
+
+export function BarcodeLibraryPage({
+  selectedBatchId: routedBatchId,
+  onSelectBatch,
+  onBackToBatches,
+}: BarcodeLibraryPageProps = {}) {
   const { role } = useStaff();
   const isOwner = role === "owner";
+  const [localSelectedBatchId, setLocalSelectedBatchId] = useState("");
   const [batches, setBatches] = useState<BatchSummary[]>([]);
-  const [selectedBatchId, setSelectedBatchId] = useState("");
   const [batchesLoading, setBatchesLoading] = useState(true);
   const [batchError, setBatchError] = useState("");
   const [archived, setArchived] = useState(false);
@@ -42,6 +52,7 @@ export function BarcodeLibraryPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [printOnlyIds, setPrintOnlyIds] = useState<string[] | null>(null);
   const [error, setError] = useState("");
+  const selectedBatchId = routedBatchId ?? localSelectedBatchId;
   const selectedBatch = batches.find((batch) => batch.id === selectedBatchId);
 
   useEffect(() => {
@@ -224,6 +235,22 @@ export function BarcodeLibraryPage() {
     }
   }
 
+  function selectBatch(batchId: string) {
+    if (onSelectBatch) {
+      onSelectBatch(batchId);
+    } else {
+      setLocalSelectedBatchId(batchId);
+    }
+  }
+
+  function showBatchList() {
+    if (onBackToBatches) {
+      onBackToBatches();
+    } else {
+      setLocalSelectedBatchId("");
+    }
+  }
+
   return (
     <div className="ops-barcode-library">
       <PageHeading
@@ -309,7 +336,7 @@ export function BarcodeLibraryPage() {
                     setSelectedIds([]);
                     setPrintOnlyIds(null);
                     setError("");
-                    setSelectedBatchId(batch.id);
+                    selectBatch(batch.id);
                   }}
                 >
                   <span className="ops-eyebrow">{batch.destination}</span>
@@ -336,7 +363,7 @@ export function BarcodeLibraryPage() {
                 setSelectedIds([]);
                 setPrintOnlyIds(null);
                 setError("");
-                setSelectedBatchId("");
+                showBatchList();
               }}
             >
               Kembali ke daftar batch

@@ -276,7 +276,7 @@ describe("public batch list", () => {
         );
       });
 
-      fireEvent.click(screen.getByRole("button", { name: "Hapus" }));
+      fireEvent.click(screen.getByRole("button", { name: "Hapus batch" }));
       expect(await screen.findByText("Belum ada batch pengiriman.")).toBeVisible();
       expect(fetchMock).toHaveBeenCalledWith(
         `/api/batches/${batchId}`,
@@ -346,7 +346,9 @@ describe("public batch list", () => {
       </DashboardContext.Provider>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /BATCH 34/ }));
+    const batchCard = await screen.findByRole("button", { name: /BATCH 34/ });
+    expect(screen.queryByText("Santi Endu")).not.toBeInTheDocument();
+    fireEvent.click(batchCard);
 
     expect(await screen.findByText("Santi Endu")).toBeVisible();
     expect(await screen.findByText("Penerima kedua")).toBeVisible();

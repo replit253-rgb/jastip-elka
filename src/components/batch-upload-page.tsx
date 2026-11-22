@@ -412,64 +412,54 @@ export function BatchUploadPage() {
           {loading ? (
             <p className="ops-empty">Memuat batch...</p>
           ) : batches.length ? (
-            <div className="ops-table-wrap">
-              <table className="ops-table">
-                <thead>
-                  <tr>
-                    <th>Batch</th>
-                    <th>Tujuan</th>
-                    <th>Daftar penerima</th>
-                    <th>Halaman utama</th>
-                    {isOwner && <th>Aksi</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {batches.map((batch) => (
-                    <tr key={batch.id}>
-                      <td>
-                        <strong>{batch.title}</strong>
-                      </td>
-                      <td>{batch.destination}</td>
-                      <td>{batch.item_count}</td>
-                      <td>
+            <div className="ops-batch-list">
+              {batches.map((batch) => (
+                <article className="ops-batch-list__item" key={batch.id}>
+                  <div className="ops-batch-list__details">
+                    <p className="ops-eyebrow">{batch.destination}</p>
+                    <h3>{batch.title}</h3>
+                    <p>
+                      {batch.item_count} data penerima · {batch.package_count} barcode aktif
+                      {batch.archived_package_count
+                        ? ` · ${batch.archived_package_count} diarsipkan`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="ops-batch-actions">
+                    <button
+                      className={`ops-batch-feature${batch.is_featured ? " is-active" : ""}`}
+                      type="button"
+                      aria-pressed={batch.is_featured}
+                      disabled={!isOwner}
+                      onClick={() => void setFeatured(batch, !batch.is_featured)}
+                    >
+                      <Star size={15} aria-hidden="true" />
+                      {batch.is_featured ? "Ditampilkan" : "Tampilkan"}
+                    </button>
+                    {isOwner && (
+                      <>
                         <button
-                          className={`ops-batch-feature${batch.is_featured ? " is-active" : ""}`}
+                          className="ops-button ops-button--quiet"
                           type="button"
-                          aria-pressed={batch.is_featured}
-                          disabled={!isOwner}
-                          onClick={() => void setFeatured(batch, !batch.is_featured)}
+                          onClick={() => void downloadBatchPdf(batch)}
+                          disabled={saving || exportingBatchId !== ""}
                         >
-                          <Star size={15} aria-hidden="true" />
-                          {batch.is_featured ? "Ditampilkan" : "Tampilkan"}
+                          <FileDown size={15} aria-hidden="true" />
+                          {exportingBatchId === batch.id ? "Menyiapkan PDF..." : "Unduh PDF"}
                         </button>
-                      </td>
-                      {isOwner && (
-                        <td>
-                          <div className="ops-batch-actions">
-                            <button
-                              className="ops-button ops-button--quiet"
-                              type="button"
-                              onClick={() => void downloadBatchPdf(batch)}
-                              disabled={saving || exportingBatchId !== ""}
-                            >
-                              <FileDown size={15} aria-hidden="true" />
-                              {exportingBatchId === batch.id ? "Menyiapkan PDF..." : "Unduh PDF"}
-                            </button>
-                            <button
-                              className="ops-button ops-button--quiet"
-                              type="button"
-                              onClick={() => void deleteBatch(batch)}
-                              disabled={saving || exportingBatchId !== ""}
-                            >
-                              <Trash2 size={15} aria-hidden="true" /> Hapus
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <button
+                          className="ops-button ops-button--quiet"
+                          type="button"
+                          onClick={() => void deleteBatch(batch)}
+                          disabled={saving || exportingBatchId !== ""}
+                        >
+                          <Trash2 size={15} aria-hidden="true" /> Hapus batch
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </article>
+              ))}
             </div>
           ) : (
             <p className="ops-empty">Belum ada batch pengiriman.</p>

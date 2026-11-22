@@ -2311,7 +2311,8 @@ html {
 
 .ops-barcode-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 280px));
+  justify-content: start;
   gap: 0.8rem;
 }
 
@@ -2430,6 +2431,46 @@ html {
   white-space: nowrap;
 }
 
+.ops-batch-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.ops-batch-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.ops-batch-list__details {
+  min-width: 0;
+}
+
+.ops-batch-list__details .ops-eyebrow {
+  margin: 0;
+}
+
+.ops-batch-list__details h3 {
+  margin: 0.25rem 0;
+  color: var(--brand-ink);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1rem;
+}
+
+.ops-batch-list__details > p:last-child {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.ops-batch-list__item .ops-batch-actions {
+  justify-content: flex-end;
+}
+
 .ops-batch-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -2537,15 +2578,18 @@ html {
 
 .ops-barcode-card__qr {
   display: grid;
-  min-height: 132px;
+  min-width: 0;
+  min-height: 160px;
   place-items: center;
   padding: 0.35rem;
   background: oklch(1 0 0);
 }
 
 .ops-barcode-card__qr canvas {
-  width: 116px;
-  height: 116px;
+  display: block;
+  width: min(100%, 144px) !important;
+  height: auto !important;
+  aspect-ratio: 1;
   max-width: 100%;
 }
 
@@ -3139,6 +3183,16 @@ html {
     grid-template-columns: 1fr;
   }
 
+  .ops-batch-list__item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ops-batch-list__item .ops-batch-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
   .ops-scan-result {
     min-height: 340px;
     padding: 1.4rem 0 0;
@@ -3276,8 +3330,8 @@ html {
   }
 
   .ops-barcode-card__qr canvas {
-    width: 3cm;
-    height: 3cm;
+    width: 3cm !important;
+    height: 3cm !important;
   }
 
   .ops-barcode-card__selection > label {
