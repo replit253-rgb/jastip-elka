@@ -1996,6 +1996,11 @@ html {
   color: var(--brand-burgundy);
 }
 
+.ops-button--danger:hover:not(:disabled) {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
 .ops-button--wide {
   width: 100%;
 }
@@ -2306,15 +2311,69 @@ html {
 
 .ops-barcode-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 0.8rem;
+}
+
+.ops-batch-page {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.ops-batch-page .ops-page-heading {
+  margin-bottom: 0;
+}
+
+.ops-batch-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.ops-batch-card {
+  min-width: 0;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.ops-batch-card h2 {
+  margin: 0 0 1rem;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.2rem;
+  letter-spacing: -0.035em;
+}
+
+.ops-batch-card input[type="file"] {
+  min-height: 43px;
+  padding: 0.55rem;
+  border: 1px solid var(--border);
+  color: var(--brand-ink);
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.ops-batch-card input[type="file"]::file-selector-button {
+  margin-right: 0.7rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--brand-paper);
+  color: var(--brand-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+}
+
+.ops-batch-card .ops-message {
+  margin-bottom: 0;
 }
 
 .ops-barcode-card {
   display: grid;
   align-content: start;
-  gap: 1rem;
-  padding: 1rem;
+  gap: 0.65rem;
+  padding: 0.8rem;
   border: 1px solid var(--border);
   background: var(--background);
 }
@@ -2336,7 +2395,26 @@ html {
 
 .ops-barcode-card__heading h2 {
   margin: 0.35rem 0 0;
-  font-size: 0.95rem;
+  font-size: 0.84rem;
+}
+
+.ops-barcode-card__selection {
+  display: grid;
+  justify-items: end;
+  gap: 0.4rem;
+}
+
+.ops-barcode-card__selection > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.ops-barcode-card__selection input {
+  accent-color: var(--brand-burgundy);
 }
 
 .ops-content-status,
@@ -2353,15 +2431,15 @@ html {
 
 .ops-barcode-card__qr {
   display: grid;
-  min-height: 200px;
+  min-height: 132px;
   place-items: center;
-  padding: 0.7rem;
+  padding: 0.35rem;
   background: oklch(1 0 0);
 }
 
 .ops-barcode-card__qr canvas {
-  width: 176px;
-  height: 176px;
+  width: 116px;
+  height: 116px;
   max-width: 100%;
 }
 
@@ -2950,7 +3028,8 @@ html {
 
   .ops-form-layout,
   .ops-scan-layout,
-  .ops-price-layout {
+  .ops-price-layout,
+  .ops-batch-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2975,6 +3054,15 @@ html {
 
   .ops-page-heading h1 {
     font-size: 2.25rem;
+  }
+
+  .ops-barcode-library__heading-actions {
+    width: 100%;
+  }
+
+  .ops-barcode-library__heading-actions > * {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 
   .ops-stats {
@@ -3057,9 +3145,13 @@ html {
     display: none !important;
   }
 
+  .ops-barcode-grid--print-selection .ops-barcode-card:not(.ops-barcode-card--print-target) {
+    display: none !important;
+  }
+
   .ops-barcode-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5cm;
+    gap: 0.35cm;
   }
 
   .ops-barcode-card {
@@ -3073,8 +3165,12 @@ html {
   }
 
   .ops-barcode-card__qr canvas {
-    width: 4cm;
-    height: 4cm;
+    width: 3cm;
+    height: 3cm;
+  }
+
+  .ops-barcode-card__selection > label {
+    display: none;
   }
 }
 
@@ -3449,7 +3545,8 @@ html {
 }
 
 .ops-content-editor input:not([type="checkbox"]),
-.ops-content-editor textarea {
+.ops-content-editor textarea,
+.ops-content-editor select {
   width: 100%;
   min-height: 43px;
   padding: 0.65rem 0.75rem;
@@ -3467,7 +3564,8 @@ html {
 }
 
 .ops-content-editor input:focus,
-.ops-content-editor textarea:focus {
+.ops-content-editor textarea:focus,
+.ops-content-editor select:focus {
   border-color: var(--brand-burgundy);
   outline: 2px solid color-mix(in oklab, var(--brand-burgundy) 18%, transparent);
   outline-offset: 1px;

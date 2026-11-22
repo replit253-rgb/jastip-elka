@@ -292,7 +292,9 @@ export function BatchListSection() {
           <div className="batch-list__groups">
             {visibleBatches.map((batch) => (
               <article className="batch-list__card" key={batch.id}>
-                <h3>LIST PAKET {batch.destination.toUpperCase()} {batch.title.toUpperCase()}</h3>
+                <h3>
+                  LIST PAKET {batch.destination.toUpperCase()} {batch.title.toUpperCase()}
+                </h3>
                 <div className="batch-list__table-wrap">
                   <table className="batch-list__table">
                     <thead>

@@ -25,6 +25,14 @@ export const reviewSubmissionSchema = z.object({
   body: z.string().trim().min(10).max(1000),
 });
 
+export const reviewOwnerCreateSchema = reviewSubmissionSchema.extend({
+  status: z.enum(["pending", "approved", "rejected"]).default("pending"),
+});
+
+export const reviewOwnerUpdateSchema = reviewSubmissionSchema.extend({
+  status: z.enum(["pending", "approved", "rejected"]),
+});
+
 export const reviewModerationSchema = z.object({
   status: z.enum(["approved", "rejected"]),
 });

@@ -22,6 +22,8 @@ import {
   announcementUpdateSchema,
   assertOwnerRole,
   reviewModerationSchema,
+  reviewOwnerCreateSchema,
+  reviewOwnerUpdateSchema,
   reviewSubmissionSchema,
 } from "./content-workflow.ts";
 import {
@@ -510,10 +512,9 @@ async function startServer() {
         if (existing.rows[0]) {
           batchId = existing.rows[0].id;
           await client.query("DELETE FROM package_batch_items WHERE batch_id = $1", [batchId]);
-          await client.query(
-            "UPDATE package_batches SET created_at = now() WHERE id = $1",
-            [batchId],
-          );
+          await client.query("UPDATE package_batches SET created_at = now() WHERE id = $1", [
+            batchId,
+          ]);
         } else {
           batchId = randomUUID();
           await client.query(
@@ -645,13 +646,10 @@ async function startServer() {
 
   app.delete("/api/announcements/:id", requireOwner, async (request, response, next) => {
     try {
-      const result = await pool.query(
-        `UPDATE announcements SET is_published = false, updated_at = now()
-         WHERE id = $1
-         RETURNING id`,
-        [request.params["id"]],
-      );
-      if (!result.rows[0]) throw new WorkflowError("Informasi tidak ditemukan.", 404);
+      const result = await pool.query("DELETE FROM announcements WHERE id = $1 RETURNING id", [
+        request.params["id"],
+      ]);
+      if (!result.rowCount) throw new WorkflowError("Informasi tidak ditemukan.", 404);
       response.status(204).end();
     } catch (error) {
       next(error);
@@ -673,6 +671,70 @@ async function startServer() {
         [status],
       );
       response.json({ reviews: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/reviews", requireOwner, async (request, response, next) => {
+    try {
+      const input = reviewOwnerCreateSchema.parse(request.body);
+      const moderated = input.status !== "pending";
+      const result = await pool.query(
+        `INSERT INTO customer_reviews (
+          id, author_name, rating, body, status, moderated_by, moderated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, author_name, rating, body, status, moderated_at, created_at`,
+        [
+          randomUUID(),
+          input.authorName,
+          input.rating,
+          input.body,
+          input.status,
+          moderated ? request.staffUser!.id : null,
+          moderated ? new Date() : null,
+        ],
+      );
+      response.status(201).json({ review: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/reviews/:id", requireOwner, async (request, response, next) => {
+    try {
+      const input = reviewOwnerUpdateSchema.parse(request.body);
+      const moderated = input.status !== "pending";
+      const result = await pool.query(
+        `UPDATE customer_reviews
+         SET author_name = $2, rating = $3, body = $4, status = $5,
+             moderated_by = $6, moderated_at = $7
+         WHERE id = $1
+         RETURNING id, author_name, rating, body, status, moderated_at, created_at`,
+        [
+          request.params["id"],
+          input.authorName,
+          input.rating,
+          input.body,
+          input.status,
+          moderated ? request.staffUser!.id : null,
+          moderated ? new Date() : null,
+        ],
+      );
+      if (!result.rows[0]) throw new WorkflowError("Ulasan tidak ditemukan.", 404);
+      response.json({ review: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/reviews/:id", requireOwner, async (request, response, next) => {
+    try {
+      const result = await pool.query("DELETE FROM customer_reviews WHERE id = $1 RETURNING id", [
+        request.params["id"],
+      ]);
+      if (!result.rowCount) throw new WorkflowError("Ulasan tidak ditemukan.", 404);
+      response.status(204).end();
     } catch (error) {
       next(error);
     }

@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { BatchUploadPage } from "@/components/batch-upload-page";
+import { DashboardContext } from "@/components/operations-dashboard-context";
 import { BatchListSection } from "@/components/elkana-site";
 
 describe("public batch list", () => {
@@ -68,9 +70,38 @@ describe("public batch list", () => {
     render(<BatchListSection />);
 
     await waitFor(() => {
+      expect(screen.getByText("Belum ada daftar paket untuk tujuan Bajawa.")).toBeInTheDocument();
+    });
+  });
+
+  describe("dashboard batch page", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("renders for a signed-in owner and loads the published batches", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ batches: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      );
+
+      render(
+        <DashboardContext.Provider
+          value={{ user: { id: "owner-id", email: "owner@example.com", role: "owner" } }}
+        >
+          <BatchUploadPage />
+        </DashboardContext.Provider>,
+      );
+
       expect(
-        screen.getByText("Belum ada daftar paket untuk tujuan Bajawa."),
-      ).toBeInTheDocument();
+        await screen.findByRole("heading", { name: "Unggah daftar batch Excel" }),
+      ).toBeVisible();
+      expect(screen.getByText("Belum ada batch yang dipublikasikan.")).toBeVisible();
     });
   });
 });

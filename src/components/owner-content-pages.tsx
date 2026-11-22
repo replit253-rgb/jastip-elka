@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, CircleAlert, Eye, EyeOff, Pencil, Send, Star } from "lucide-react";
+import { Check, CircleAlert, Eye, EyeOff, Pencil, Send, Star, Trash2, X } from "lucide-react";
 
 import { useStaff } from "@/components/operations-dashboard-context";
 import { apiRequest, formatDate } from "@/lib/operations-api";
@@ -135,6 +135,20 @@ export function AnnouncementsPage() {
     }
   }
 
+  async function deleteAnnouncement(announcement: Announcement) {
+    if (!window.confirm(`Hapus permanen informasi "${announcement.title}"?`)) return;
+    setError("");
+    setSuccess("");
+    try {
+      await apiRequest<void>(`/api/announcements/${announcement.id}`, { method: "DELETE" });
+      setAnnouncements((current) => current.filter((item) => item.id !== announcement.id));
+      if (editingId === announcement.id) resetForm();
+      setSuccess("Informasi berhasil dihapus.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Informasi gagal dihapus.");
+    }
+  }
+
   return (
     <>
       <PageHeading
@@ -253,6 +267,13 @@ export function AnnouncementsPage() {
                       )}
                       {announcement.is_published ? "Tarik" : "Terbitkan"}
                     </button>
+                    <button
+                      type="button"
+                      className="ops-button ops-button--quiet ops-button--danger"
+                      onClick={() => void deleteAnnouncement(announcement)}
+                    >
+                      <Trash2 size={15} aria-hidden="true" /> Hapus
+                    </button>
                   </div>
                 )}
               </article>
@@ -269,6 +290,12 @@ export function ReviewModerationPage() {
   const isOwner = user.role === "owner";
   const [status, setStatus] = useState<ReviewStatus>("pending");
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [editingReview, setEditingReview] = useState<Review | null>(null);
+  const [reviewAuthor, setReviewAuthor] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewBody, setReviewBody] = useState("");
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("pending");
+  const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -310,6 +337,68 @@ export function ReviewModerationPage() {
     }
   }
 
+  function resetReviewForm() {
+    setEditingReview(null);
+    setReviewAuthor("");
+    setReviewRating(5);
+    setReviewBody("");
+    setReviewStatus("pending");
+  }
+
+  function editReview(review: Review) {
+    setEditingReview(review);
+    setReviewAuthor(review.author_name);
+    setReviewRating(review.rating);
+    setReviewBody(review.body);
+    setReviewStatus(review.status);
+    setError("");
+    setSuccess("");
+  }
+
+  async function saveReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+    setSaving(true);
+    try {
+      const payload = JSON.stringify({
+        authorName: reviewAuthor,
+        rating: reviewRating,
+        body: reviewBody,
+        status: reviewStatus,
+      });
+      await apiRequest<{ review: Review }>(
+        editingReview ? `/api/reviews/${editingReview.id}` : "/api/reviews",
+        {
+          method: editingReview ? "PUT" : "POST",
+          body: payload,
+        },
+      );
+      setSuccess(editingReview ? "Ulasan berhasil diperbarui." : "Ulasan berhasil ditambahkan.");
+      setStatus(reviewStatus);
+      resetReviewForm();
+      setReloadKey((key) => key + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Ulasan gagal disimpan.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteReview(review: Review) {
+    if (!window.confirm(`Hapus permanen ulasan dari ${review.author_name}?`)) return;
+    setError("");
+    setSuccess("");
+    try {
+      await apiRequest<void>(`/api/reviews/${review.id}`, { method: "DELETE" });
+      setReviews((current) => current.filter((item) => item.id !== review.id));
+      if (editingReview?.id === review.id) resetReviewForm();
+      setSuccess("Ulasan berhasil dihapus.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Ulasan gagal dihapus.");
+    }
+  }
+
   return (
     <>
       <PageHeading
@@ -319,6 +408,75 @@ export function ReviewModerationPage() {
       />
       <ContentError>{error}</ContentError>
       <ContentSuccess>{success}</ContentSuccess>
+      {isOwner && (
+        <form className="ops-form ops-content-editor" onSubmit={saveReview}>
+          <div className="ops-form__intro">
+            <h2>{editingReview ? "Ubah ulasan" : "Tambah ulasan"}</h2>
+            <p>Owner dapat mengelola ulasan pelanggan dan status tampilnya.</p>
+          </div>
+          <label>
+            Nama pelanggan
+            <input
+              value={reviewAuthor}
+              onChange={(event) => setReviewAuthor(event.target.value)}
+              minLength={2}
+              maxLength={80}
+              required
+            />
+          </label>
+          <label>
+            Rating
+            <select
+              value={reviewRating}
+              onChange={(event) => setReviewRating(Number(event.target.value))}
+            >
+              {[5, 4, 3, 2, 1].map((rating) => (
+                <option key={rating} value={rating}>
+                  {rating} dari 5 bintang
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Isi ulasan
+            <textarea
+              value={reviewBody}
+              onChange={(event) => setReviewBody(event.target.value)}
+              minLength={10}
+              maxLength={1000}
+              rows={4}
+              required
+            />
+          </label>
+          <label>
+            Status ulasan
+            <select
+              value={reviewStatus}
+              onChange={(event) => setReviewStatus(event.target.value as ReviewStatus)}
+            >
+              <option value="pending">Menunggu persetujuan</option>
+              <option value="approved">Tayang di website</option>
+              <option value="rejected">Ditolak</option>
+            </select>
+          </label>
+          <div className="ops-content-editor__actions">
+            <button type="submit" className="ops-button ops-button--primary" disabled={saving}>
+              <Send size={16} aria-hidden="true" />
+              {saving ? "Menyimpan..." : editingReview ? "Simpan perubahan" : "Tambah ulasan"}
+            </button>
+            {editingReview && (
+              <button
+                type="button"
+                className="ops-button ops-button--quiet"
+                onClick={resetReviewForm}
+                disabled={saving}
+              >
+                <X size={15} aria-hidden="true" /> Batal mengubah
+              </button>
+            )}
+          </div>
+        </form>
+      )}
       {!isOwner && (
         <p className="ops-content-notice">
           Anda dapat melihat ulasan, tetapi persetujuan dan penolakan hanya dapat dilakukan owner.
@@ -385,6 +543,20 @@ export function ReviewModerationPage() {
                       Tolak ulasan
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className="ops-button ops-button--quiet"
+                    onClick={() => editReview(review)}
+                  >
+                    <Pencil size={15} aria-hidden="true" /> Ubah
+                  </button>
+                  <button
+                    type="button"
+                    className="ops-button ops-button--quiet ops-button--danger"
+                    onClick={() => void deleteReview(review)}
+                  >
+                    <Trash2 size={15} aria-hidden="true" /> Hapus
+                  </button>
                 </div>
               )}
             </article>

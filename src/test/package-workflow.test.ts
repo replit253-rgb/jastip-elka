@@ -12,6 +12,8 @@ import {
   announcementUpdateSchema,
   assertOwnerRole,
   reviewModerationSchema,
+  reviewOwnerCreateSchema,
+  reviewOwnerUpdateSchema,
   reviewSubmissionSchema,
 } from "../../api/content-workflow";
 import { apiRequest } from "@/lib/operations-api";
@@ -51,6 +53,23 @@ describe("package workflow", () => {
     ).toBe(false);
     expect(reviewModerationSchema.safeParse({ status: "approved" }).success).toBe(true);
     expect(reviewModerationSchema.safeParse({ status: "pending" }).success).toBe(false);
+  });
+
+  it("validates owner review creation and updates with an explicit publication status", () => {
+    const review = {
+      authorName: "Dina",
+      rating: 5,
+      body: "Paket datang dengan aman dan tepat waktu.",
+    };
+
+    expect(reviewOwnerCreateSchema.parse(review).status).toBe("pending");
+    expect(reviewOwnerCreateSchema.parse({ ...review, status: "approved" }).status).toBe(
+      "approved",
+    );
+    expect(reviewOwnerUpdateSchema.safeParse({ ...review, status: "rejected" }).success).toBe(true);
+    expect(reviewOwnerUpdateSchema.safeParse({ ...review, status: "published" }).success).toBe(
+      false,
+    );
   });
 
   it("restricts content management to owners", () => {

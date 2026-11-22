@@ -48,8 +48,8 @@ describe("batch Excel parser", () => {
     const parsed = parseBatchWorkbook(data, "Malanuza");
 
     expect(parsed.title).toBe("BATCH 33");
-    expect(parsed.items[0].weightKg).toBe(1.5);
-    expect(parsed.items[0].name).toBe("Jeyn");
+    expect(parsed.items[0]?.weightKg).toBe(1.5);
+    expect(parsed.items[0]?.name).toBe("Jeyn");
   });
 
   it("rejects a sheet that has no NAMA column", () => {
@@ -69,8 +69,6 @@ describe("batch Excel parser", () => {
       [1, "", "", "", "", ""],
     ]);
 
-    expect(() => parseBatchWorkbook(data, "Bajawa")).toThrow(
-      "Tidak ada data penerima",
-    );
+    expect(() => parseBatchWorkbook(data, "Bajawa")).toThrow("Tidak ada data penerima");
   });
 });

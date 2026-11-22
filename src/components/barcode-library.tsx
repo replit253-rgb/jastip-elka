@@ -27,6 +27,8 @@ export function BarcodeLibraryPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [printWhenReady, setPrintWhenReady] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [printOnlyIds, setPrintOnlyIds] = useState<string[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -57,13 +59,27 @@ export function BarcodeLibraryPage() {
   }, [archived, reloadKey]);
 
   useEffect(() => {
-    if (!printWhenReady || loading || loadingMore || printing || hasMore) return;
+    if (
+      !printWhenReady ||
+      loading ||
+      loadingMore ||
+      printing ||
+      (hasMore && printOnlyIds === null)
+    ) {
+      return;
+    }
     const frame = window.requestAnimationFrame(() => {
       window.print();
       setPrintWhenReady(false);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [hasMore, loading, loadingMore, packages, printWhenReady, printing]);
+  }, [hasMore, loading, loadingMore, packages, printOnlyIds, printWhenReady, printing]);
+
+  useEffect(() => {
+    const resetPrintSelection = () => setPrintOnlyIds(null);
+    window.addEventListener("afterprint", resetPrintSelection);
+    return () => window.removeEventListener("afterprint", resetPrintSelection);
+  }, []);
 
   async function loadMore() {
     setLoadingMore(true);
@@ -88,6 +104,7 @@ export function BarcodeLibraryPage() {
   async function printAll() {
     if (printing || loading || packages.length === 0) return;
     setError("");
+    setPrintOnlyIds(null);
     setPrinting(true);
     setPrintWhenReady(true);
     setLoadingMore(true);
@@ -118,6 +135,18 @@ export function BarcodeLibraryPage() {
       setLoadingMore(false);
       setPrinting(false);
     }
+  }
+
+  function printPackages(ids: string[]) {
+    if (ids.length === 0) return;
+    setPrintOnlyIds(ids);
+    setPrintWhenReady(true);
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) =>
+      current.includes(id) ? current.filter((selectedId) => selectedId !== id) : [...current, id],
+    );
   }
 
   function downloadBarcode(item: BarcodePackage) {
@@ -157,6 +186,14 @@ export function BarcodeLibraryPage() {
           >
             <Printer size={16} aria-hidden="true" /> {printing ? "Menyiapkan..." : "Cetak semua"}
           </button>
+          <button
+            className="ops-button ops-button--outline"
+            type="button"
+            onClick={() => printPackages(selectedIds)}
+            disabled={loading || printing || selectedIds.length === 0}
+          >
+            <Printer size={16} aria-hidden="true" /> Cetak pilihan ({selectedIds.length})
+          </button>
         </div>
       </PageHeading>
 
@@ -165,14 +202,20 @@ export function BarcodeLibraryPage() {
           <button
             type="button"
             className={!archived ? "is-active" : ""}
-            onClick={() => setArchived(false)}
+            onClick={() => {
+              setArchived(false);
+              setSelectedIds([]);
+            }}
           >
             Aktif
           </button>
           <button
             type="button"
             className={archived ? "is-active" : ""}
-            onClick={() => setArchived(true)}
+            onClick={() => {
+              setArchived(true);
+              setSelectedIds([]);
+            }}
           >
             Arsip
           </button>
@@ -193,10 +236,20 @@ export function BarcodeLibraryPage() {
           {archived ? "Belum ada barcode dalam arsip." : "Belum ada barcode yang dibuat."}
         </p>
       ) : (
-        <div className="ops-barcode-grid">
+        <div
+          className={`ops-barcode-grid${printOnlyIds ? " ops-barcode-grid--print-selection" : ""}`}
+        >
           {packages.map((item) => (
             <article
-              className={`ops-barcode-card${item.archived_at ? " ops-barcode-card--archived" : ""}`}
+              className={[
+                "ops-barcode-card",
+                item.archived_at ? "ops-barcode-card--archived" : "",
+                printOnlyIds === null || printOnlyIds.includes(item.id)
+                  ? "ops-barcode-card--print-target"
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               key={item.id}
             >
               <div className="ops-barcode-card__heading">
@@ -204,11 +257,22 @@ export function BarcodeLibraryPage() {
                   <p className="ops-eyebrow">{item.tracking_code}</p>
                   <h2>{item.recipient_name}</h2>
                 </div>
-                {item.archived_at ? (
-                  <span className="ops-content-status">Diarsipkan</span>
-                ) : (
-                  <PackageStatus item={item} />
-                )}
+                <div className="ops-barcode-card__selection">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(item.id)}
+                      onChange={() => toggleSelected(item.id)}
+                      aria-label={`Pilih barcode ${item.tracking_code} untuk dicetak`}
+                    />
+                    <span>Pilih</span>
+                  </label>
+                  {item.archived_at ? (
+                    <span className="ops-content-status">Diarsipkan</span>
+                  ) : (
+                    <PackageStatus item={item} />
+                  )}
+                </div>
               </div>
               <div className="ops-barcode-card__qr">
                 <QRCodeCanvas
@@ -238,6 +302,13 @@ export function BarcodeLibraryPage() {
                 </div>
               </dl>
               <div className="ops-barcode-card__actions">
+                <button
+                  className="ops-button ops-button--quiet"
+                  type="button"
+                  onClick={() => printPackages([item.id])}
+                >
+                  <Printer size={15} aria-hidden="true" /> Cetak barcode ini
+                </button>
                 <button
                   className="ops-button ops-button--quiet"
                   type="button"
