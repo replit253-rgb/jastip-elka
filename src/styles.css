@@ -537,6 +537,20 @@ html {
   content: "";
 }
 
+.home-hero__schedule {
+  position: absolute;
+  z-index: 2;
+  right: clamp(1rem, 3vw, 2.25rem);
+  bottom: 3.6rem;
+  left: clamp(1rem, 3vw, 2.25rem);
+}
+
+.home-hero__visual .hero-caption {
+  top: 1.25rem;
+  right: 1.5rem;
+  bottom: auto;
+}
+
 .home-hero__content {
   width: min(100%, 680px);
   justify-self: end;
@@ -1529,7 +1543,13 @@ html {
   }
 
   .home-hero__visual {
-    min-height: 360px;
+    min-height: 480px;
+  }
+
+  .home-hero__schedule {
+    right: 1rem;
+    bottom: 3.1rem;
+    left: 1rem;
   }
 
   .home-hero__image {
@@ -1546,8 +1566,13 @@ html {
 
   .hero-caption {
     right: 1.1rem;
-    bottom: 1.1rem;
+    top: 1.1rem;
+    bottom: auto;
     font-size: 0.57rem;
+  }
+
+  .public-shipping-schedule__dates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .section-title {
@@ -2962,6 +2987,11 @@ html {
   color: oklch(0.4 0.1 150);
 }
 
+.ops-message--info {
+  background: color-mix(in oklab, var(--brand-paper) 76%, var(--background));
+  color: var(--muted-foreground);
+}
+
 .ops-payment-total {
   display: flex;
   align-items: center;
@@ -3430,6 +3460,133 @@ html {
   font-size: 0.62rem;
 }
 
+.public-shipping-schedule {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.public-shipping-schedule--compact {
+  max-height: min(60%, 390px);
+  overflow: auto;
+  padding: clamp(0.8rem, 2vw, 1.15rem);
+  border-top: 3px solid var(--brand-burgundy);
+  background: color-mix(in oklab, var(--brand-paper) 95%, transparent);
+  color: var(--brand-ink);
+  box-shadow: 0 12px 40px color-mix(in oklab, var(--brand-ink) 22%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.public-shipping-schedule__heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--brand-burgundy);
+  font-size: 0.58rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+.public-shipping-schedule__heading h2 {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.2rem;
+  letter-spacing: -0.035em;
+}
+
+.public-shipping-schedule__list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.public-shipping-schedule__item {
+  padding-top: 0.65rem;
+  border-top: 1px solid color-mix(in oklab, var(--brand-ink) 14%, transparent);
+}
+
+.public-shipping-schedule__item-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.public-shipping-schedule__status {
+  color: var(--brand-burgundy);
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.public-shipping-schedule__item h3 {
+  margin: 0.1rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.public-shipping-schedule__destination {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.4rem;
+  background: color-mix(in oklab, var(--brand-burgundy) 9%, transparent);
+  color: var(--brand-burgundy);
+  font-size: 0.6rem;
+  font-weight: 750;
+}
+
+.public-shipping-schedule__dates {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0.6rem 0 0;
+}
+
+.public-shipping-schedule__dates > div {
+  min-width: 0;
+}
+
+.public-shipping-schedule__dates dt {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--muted-foreground);
+  font-size: 0.54rem;
+  font-weight: 700;
+}
+
+.public-shipping-schedule__dates dd {
+  margin: 0.14rem 0 0;
+  color: var(--brand-ink);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.public-shipping-schedule__description,
+.public-shipping-schedule__state {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.public-shipping-schedule__description {
+  margin-top: 0.45rem;
+}
+
+.public-shipping-schedule--compact .public-shipping-schedule__heading h2 {
+  font-size: 1.05rem;
+}
+
+.public-shipping-schedule--compact .public-shipping-schedule__dates {
+  margin-top: 0.45rem;
+}
+
+.public-shipping-schedule--compact .public-shipping-schedule__item {
+  padding-top: 0.5rem;
+}
+
 .pickup-point h3 {
   margin-top: 1.25rem;
   font-size: 1.1rem;
@@ -3438,6 +3595,51 @@ html {
 .pickup-point p {
   font-size: 0.8rem;
   font-weight: 650;
+}
+
+.surabaya-address {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 1fr;
+  gap: 2rem;
+  margin-bottom: 2.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.surabaya-address h3 {
+  margin: 1.25rem 0 0;
+  color: var(--brand-ink);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.35rem;
+  line-height: 1.25;
+}
+
+.surabaya-address p,
+.surabaya-address__notes {
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.surabaya-address p {
+  margin: 0 0 0.8rem;
+}
+
+.surabaya-address__notes ul {
+  margin: 0.65rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.surabaya-address__notes li + li {
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 900px) {
+  .surabaya-address {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
 }
 
 .reviews-heading {
@@ -3690,6 +3892,19 @@ html {
     padding-bottom: 0.85rem;
     border-bottom: 1px solid var(--border);
   }
+
+  .ops-schedule-editor__dates {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-schedule-item {
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+
+  .ops-schedule-item__actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 560px) {
@@ -3851,6 +4066,125 @@ html {
   min-height: 36px;
   padding: 0.45rem 0.6rem;
   font-size: 0.66rem;
+}
+
+.ops-schedule-editor > label:not(.ops-checkbox) {
+  grid-column: 1 / -1;
+}
+
+.ops-schedule-editor__dates {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.ops-schedule-editor__dates > label {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--brand-ink);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.ops-schedule-editor__dates input {
+  width: 100%;
+  min-height: 43px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--background);
+  color: var(--brand-ink);
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.ops-schedule-editor__dates input:focus {
+  border-color: var(--brand-burgundy);
+  outline: 2px solid color-mix(in oklab, var(--brand-burgundy) 18%, transparent);
+  outline-offset: 1px;
+}
+
+.ops-schedule-list {
+  border-top: 1px solid var(--border);
+}
+
+.ops-schedule-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ops-schedule-item__content {
+  min-width: 0;
+}
+
+.ops-schedule-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.8rem;
+  color: var(--muted-foreground);
+  font-size: 0.65rem;
+}
+
+.ops-schedule-item__content h3 {
+  margin: 0.5rem 0 0.15rem;
+  color: var(--brand-ink);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.2rem;
+}
+
+.ops-schedule-item__content p {
+  margin: 0.25rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.ops-schedule-item__dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1.2rem;
+  margin: 0.8rem 0 0;
+}
+
+.ops-schedule-item__dates dt {
+  color: var(--muted-foreground);
+  font-size: 0.6rem;
+}
+
+.ops-schedule-item__dates dd {
+  margin: 0.15rem 0 0;
+  color: var(--brand-ink);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.ops-schedule-item__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.ops-schedule-item__actions .ops-button {
+  min-height: 36px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.66rem;
+}
+
+.ops-schedule-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
 }
 
 .ops-review {

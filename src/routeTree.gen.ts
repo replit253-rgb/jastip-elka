@@ -21,6 +21,7 @@ import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as DashboardBarcodeRouteImport } from './routes/dashboard.barcode'
 import { Route as DashboardBatchRouteImport } from './routes/dashboard.batch'
 import { Route as DashboardInformasiRouteImport } from './routes/dashboard.informasi'
+import { Route as DashboardJadwalRouteImport } from './routes/dashboard.jadwal'
 import { Route as DashboardPaketBaruRouteImport } from './routes/dashboard.paket-baru'
 import { Route as DashboardPembayaranRouteImport } from './routes/dashboard.pembayaran'
 import { Route as DashboardPengaturanRouteImport } from './routes/dashboard.pengaturan'
@@ -88,6 +89,11 @@ const DashboardInformasiRoute = DashboardInformasiRouteImport.update({
   path: '/informasi',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardJadwalRoute = DashboardJadwalRouteImport.update({
+  id: '/jadwal',
+  path: '/jadwal',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardPaketBaruRoute = DashboardPaketBaruRouteImport.update({
   id: '/paket-baru',
   path: '/paket-baru',
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/barcode': typeof DashboardBarcodeRoute
   '/dashboard/batch': typeof DashboardBatchRoute
   '/dashboard/informasi': typeof DashboardInformasiRoute
+  '/dashboard/jadwal': typeof DashboardJadwalRoute
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
@@ -150,6 +157,7 @@ export interface FileRoutesByTo {
   '/dashboard/barcode': typeof DashboardBarcodeRoute
   '/dashboard/batch': typeof DashboardBatchRoute
   '/dashboard/informasi': typeof DashboardInformasiRoute
+  '/dashboard/jadwal': typeof DashboardJadwalRoute
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
@@ -171,6 +179,7 @@ export interface FileRoutesById {
   '/dashboard/barcode': typeof DashboardBarcodeRoute
   '/dashboard/batch': typeof DashboardBatchRoute
   '/dashboard/informasi': typeof DashboardInformasiRoute
+  '/dashboard/jadwal': typeof DashboardJadwalRoute
   '/dashboard/paket-baru': typeof DashboardPaketBaruRoute
   '/dashboard/pembayaran': typeof DashboardPembayaranRoute
   '/dashboard/pengaturan': typeof DashboardPengaturanRoute
@@ -193,6 +202,7 @@ export interface FileRouteTypes {
     | '/dashboard/barcode'
     | '/dashboard/batch'
     | '/dashboard/informasi'
+    | '/dashboard/jadwal'
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
@@ -212,6 +222,7 @@ export interface FileRouteTypes {
     | '/dashboard/barcode'
     | '/dashboard/batch'
     | '/dashboard/informasi'
+    | '/dashboard/jadwal'
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
@@ -232,6 +243,7 @@ export interface FileRouteTypes {
     | '/dashboard/barcode'
     | '/dashboard/batch'
     | '/dashboard/informasi'
+    | '/dashboard/jadwal'
     | '/dashboard/paket-baru'
     | '/dashboard/pembayaran'
     | '/dashboard/pengaturan'
@@ -338,6 +350,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardInformasiRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/jadwal': {
+      id: '/dashboard/jadwal'
+      path: '/jadwal'
+      fullPath: '/dashboard/jadwal'
+      preLoaderRoute: typeof DashboardJadwalRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/paket-baru': {
       id: '/dashboard/paket-baru'
       path: '/paket-baru'
@@ -387,6 +406,7 @@ interface DashboardRouteChildren {
   DashboardBarcodeRoute: typeof DashboardBarcodeRoute
   DashboardBatchRoute: typeof DashboardBatchRoute
   DashboardInformasiRoute: typeof DashboardInformasiRoute
+  DashboardJadwalRoute: typeof DashboardJadwalRoute
   DashboardPaketBaruRoute: typeof DashboardPaketBaruRoute
   DashboardPembayaranRoute: typeof DashboardPembayaranRoute
   DashboardPengaturanRoute: typeof DashboardPengaturanRoute
@@ -400,6 +420,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardBarcodeRoute: DashboardBarcodeRoute,
   DashboardBatchRoute: DashboardBatchRoute,
   DashboardInformasiRoute: DashboardInformasiRoute,
+  DashboardJadwalRoute: DashboardJadwalRoute,
   DashboardPaketBaruRoute: DashboardPaketBaruRoute,
   DashboardPembayaranRoute: DashboardPembayaranRoute,
   DashboardPengaturanRoute: DashboardPengaturanRoute,

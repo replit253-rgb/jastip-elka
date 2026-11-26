@@ -202,6 +202,46 @@ describe("public batch list", () => {
       ).toBeVisible();
     });
 
+    it("shows the already-imported notice as information rather than an error", async () => {
+      const batch = {
+        id: "00000000-0000-4000-8000-000000000009",
+        title: "BATCH 12",
+        destination: "Bajawa",
+        item_count: 1,
+        package_count: 1,
+        archived_package_count: 0,
+        has_excel_import: true,
+        is_featured: false,
+        created_at: "2026-11-22T00:00:00Z",
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ batches: [batch] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      );
+
+      render(
+        <DashboardContext.Provider
+          value={{ user: { id: "owner-id", email: "owner@example.com", role: "owner" } }}
+        >
+          <BatchUploadPage />
+        </DashboardContext.Provider>,
+      );
+
+      fireEvent.change(await screen.findByLabelText("Batch tujuan impor"), {
+        target: { value: batch.id },
+      });
+
+      const notice = await screen.findByRole("status");
+      expect(notice).toHaveTextContent("Batch ini sudah pernah diimpor");
+      expect(notice).toHaveClass("ops-message--info");
+      expect(notice).not.toHaveClass("ops-message--error");
+    });
+
     it("lets owners download a batch PDF and delete a batch", async () => {
       const batchId = "00000000-0000-4000-8000-000000000001";
       const batch = {

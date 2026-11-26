@@ -20,7 +20,11 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AnnouncementSection, ReviewsSection } from "@/components/public-content";
+import {
+  AnnouncementSection,
+  PublicShippingScheduleSection,
+  ReviewsSection,
+} from "@/components/public-content";
 import { apiRequest } from "@/lib/operations-api";
 
 const ferryImage = "/1.jpeg";
@@ -452,6 +456,40 @@ function PickupPointSection() {
           title="Titik pengambilan paket."
           description="Pilih lokasi pengambilan sesuai tujuan. Admin akan mengabari saat paket tiba dan siap diambil."
         />
+        <article className="surabaya-address">
+          <div>
+            <span className="step-card__number">TEMPAT KUMPUL PAKET</span>
+            <h3>Alamat pengiriman di Surabaya</h3>
+          </div>
+          <div className="surabaya-address__details">
+            <p>
+              <strong>NAMA PAKET:</strong> ELKANA BJW / ELKANA AMR / ELKANA MLZ
+              <br />
+              <strong>NAMA PEMILIK PAKET:</strong> Nama depan dan nama belakang
+            </p>
+            <p>
+              Jl. Bumi Indah No. 39
+              <br />
+              Kel. Lontar, Kec. Sambikerep
+              <br />
+              (Kamar 1102 - Nama Pemilik Paket)
+              <br />
+              Kota Surabaya, Jawa Timur 60217
+            </p>
+            <p>
+              <strong>No. WA / Telp:</strong> Nomor pemilik paket
+            </p>
+          </div>
+          <div className="surabaya-address__notes">
+            <strong>Catatan tambahan</strong>
+            <ul>
+              <li>BJW untuk pengambilan di Bajawa, MLZ untuk Malanuza, dan AMR untuk Aimere.</li>
+              <li>Nama pemilik terdiri dari 2 kata: Nama Depan dan Nama Belakang.</li>
+              <li>Contoh nama: Rommy Lamuri, Eka Wea, atau Margaretha Bhebhe.</li>
+              <li>Sertakan nama pemilik pada alamat, contoh: (1102-Rommy Lamuri).</li>
+            </ul>
+          </div>
+        </article>
         <div className="destination-grid">
           {pickupPoints.map((point) => (
             <article className="destination-card pickup-point" key={point.name}>
@@ -542,6 +580,9 @@ export function HomePage() {
             className="home-hero__image"
             fetchPriority="high"
           />
+          <div className="home-hero__schedule">
+            <PublicShippingScheduleSection compact />
+          </div>
           <span className="hero-caption">Perjalanan laut · via Ende</span>
         </div>
       </section>
@@ -1050,6 +1091,16 @@ export function ContactPage() {
               <div>
                 <strong>Rute layanan</strong>
                 <span>Surabaya → Ende → Bajawa, Malanuza, Aimere</span>
+              </div>
+            </div>
+            <div className="contact-detail">
+              <MapPin size={19} aria-hidden="true" />
+              <div>
+                <strong>Alamat kumpul paket Surabaya</strong>
+                <span>
+                  Jl. Bumi Indah No. 39, Kel. Lontar, Kec. Sambikerep,
+                  (Kamar 1102 - Nama Pemilik Paket), Kota Surabaya, Jawa Timur 60217
+                </span>
               </div>
             </div>
             <div className="contact-detail">

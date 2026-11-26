@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ArrowRight, Megaphone, Star } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock3, MapPin, Megaphone, Ship, Star } from "lucide-react";
 
 import { apiRequest, formatDate } from "@/lib/operations-api";
 
@@ -17,6 +17,133 @@ type PublicReview = {
   body: string;
   created_at: string;
 };
+
+type ShippingSchedule = {
+  id: string;
+  title: string;
+  destination: string;
+  closing_date: string;
+  departure_date: string;
+  estimated_arrival_date: string | null;
+  status: "collecting" | "closing_soon" | "closed" | "in_transit" | "arrived";
+  description: string;
+};
+
+const shippingScheduleStatusLabels: Record<ShippingSchedule["status"], string> = {
+  collecting: "Penerimaan dibuka",
+  closing_soon: "Segera closing",
+  closed: "Penerimaan ditutup",
+  in_transit: "Dalam perjalanan",
+  arrived: "Sudah tiba",
+};
+
+function formatShippingScheduleDate(value: string) {
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${value.slice(0, 10)}T00:00:00.000Z`));
+}
+
+export function PublicShippingScheduleSection({ compact = false }: { compact?: boolean }) {
+  const [schedules, setSchedules] = useState<ShippingSchedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<{ schedules: ShippingSchedule[] }>("/api/public/shipping-schedules")
+      .then(({ schedules: items }) => {
+        if (active) setSchedules(items);
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setError(
+            cause instanceof Error
+              ? `Jadwal pengiriman gagal dimuat: ${cause.message}`
+              : "Jadwal pengiriman gagal dimuat.",
+          );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return (
+    <section
+      className={`public-shipping-schedule${compact ? " public-shipping-schedule--compact" : ""}`}
+      aria-labelledby="public-shipping-schedule-title"
+    >
+      <div className="public-shipping-schedule__heading">
+        <span>
+          <CalendarDays size={15} aria-hidden="true" />
+          JADWAL & CLOSING
+        </span>
+        <h2 id="public-shipping-schedule-title">Batch pengiriman</h2>
+      </div>
+      {loading ? (
+        <p className="public-shipping-schedule__state" aria-live="polite">
+          Memuat jadwal pengiriman...
+        </p>
+      ) : error ? (
+        <p className="public-shipping-schedule__state" role="alert">
+          {error}
+        </p>
+      ) : schedules.length === 0 ? (
+        <p className="public-shipping-schedule__state">
+          Belum ada jadwal yang diterbitkan. Hubungi admin untuk memastikan jadwal terdekat.
+        </p>
+      ) : (
+        <div className="public-shipping-schedule__list">
+          {schedules.slice(0, compact ? 2 : 3).map((schedule) => (
+            <article className="public-shipping-schedule__item" key={schedule.id}>
+              <div className="public-shipping-schedule__item-heading">
+                <div>
+                  <span className="public-shipping-schedule__status">
+                    {shippingScheduleStatusLabels[schedule.status]}
+                  </span>
+                  <h3>{schedule.title}</h3>
+                </div>
+                <span className="public-shipping-schedule__destination">
+                  <MapPin size={13} aria-hidden="true" /> {schedule.destination}
+                </span>
+              </div>
+              <dl className="public-shipping-schedule__dates">
+                <div>
+                  <dt>
+                    <Clock3 size={13} aria-hidden="true" /> Closing titip
+                  </dt>
+                  <dd>{formatShippingScheduleDate(schedule.closing_date)}</dd>
+                </div>
+                <div>
+                  <dt>
+                    <Ship size={13} aria-hidden="true" /> Berangkat
+                  </dt>
+                  <dd>{formatShippingScheduleDate(schedule.departure_date)}</dd>
+                </div>
+                {schedule.estimated_arrival_date && (
+                  <div>
+                    <dt>
+                      <MapPin size={13} aria-hidden="true" /> Estimasi tiba
+                    </dt>
+                    <dd>{formatShippingScheduleDate(schedule.estimated_arrival_date)}</dd>
+                  </div>
+                )}
+              </dl>
+              {schedule.description && (
+                <p className="public-shipping-schedule__description">{schedule.description}</p>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function AnnouncementSection() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);

@@ -25,6 +25,8 @@ import {
   reviewOwnerCreateSchema,
   reviewOwnerUpdateSchema,
   reviewSubmissionSchema,
+  shippingScheduleCreateSchema,
+  shippingScheduleUpdateSchema,
 } from "./content-workflow.ts";
 import {
   assertCanDeletePaymentHistory,
@@ -439,6 +441,29 @@ async function startServer() {
     }
   });
 
+  app.get("/api/public/shipping-schedules", async (_request, response, next) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, title, destination,
+           to_char(closing_date, 'YYYY-MM-DD') AS closing_date,
+           to_char(departure_date, 'YYYY-MM-DD') AS departure_date,
+           to_char(estimated_arrival_date, 'YYYY-MM-DD') AS estimated_arrival_date,
+           status, description
+         FROM shipping_schedules
+         WHERE is_published = true
+           AND (
+             departure_date >= CURRENT_DATE
+             OR status = 'in_transit'
+           )
+         ORDER BY departure_date ASC, created_at DESC
+         LIMIT 3`,
+      );
+      response.json({ schedules: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/api/public/batches", async (_request, response, next) => {
     try {
       const batches = await pool.query(
@@ -604,6 +629,102 @@ async function startServer() {
   app.use("/api", requireStaff(pool, sessionSecret));
 
   app.get("/api/auth/me", (request, response) => response.json({ user: request.staffUser }));
+
+  app.get("/api/shipping-schedules", async (_request, response, next) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, title, destination,
+           to_char(closing_date, 'YYYY-MM-DD') AS closing_date,
+           to_char(departure_date, 'YYYY-MM-DD') AS departure_date,
+           to_char(estimated_arrival_date, 'YYYY-MM-DD') AS estimated_arrival_date,
+           status, description, is_published, created_at, updated_at
+         FROM shipping_schedules
+         ORDER BY departure_date DESC, created_at DESC`,
+      );
+      response.json({ schedules: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/shipping-schedules", requireOwner, async (request, response, next) => {
+    try {
+      const input = shippingScheduleCreateSchema.parse(request.body);
+      const result = await pool.query(
+        `INSERT INTO shipping_schedules (
+           id, title, destination, closing_date, departure_date, estimated_arrival_date,
+           status, description, is_published, created_by
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, title, destination,
+           to_char(closing_date, 'YYYY-MM-DD') AS closing_date,
+           to_char(departure_date, 'YYYY-MM-DD') AS departure_date,
+           to_char(estimated_arrival_date, 'YYYY-MM-DD') AS estimated_arrival_date,
+           status, description, is_published, created_at, updated_at`,
+        [
+          randomUUID(),
+          input.title,
+          input.destination,
+          input.closingDate,
+          input.departureDate,
+          input.estimatedArrivalDate,
+          input.status,
+          input.description,
+          input.isPublished,
+          request.staffUser!.id,
+        ],
+      );
+      response.status(201).json({ schedule: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/shipping-schedules/:id", requireOwner, async (request, response, next) => {
+    try {
+      const id = z.string().uuid().parse(request.params["id"]);
+      const input = shippingScheduleUpdateSchema.parse(request.body);
+      const result = await pool.query(
+        `UPDATE shipping_schedules
+         SET title = $2, destination = $3, closing_date = $4, departure_date = $5,
+             estimated_arrival_date = $6, status = $7, description = $8,
+             is_published = $9, updated_at = now()
+         WHERE id = $1
+         RETURNING id, title, destination,
+           to_char(closing_date, 'YYYY-MM-DD') AS closing_date,
+           to_char(departure_date, 'YYYY-MM-DD') AS departure_date,
+           to_char(estimated_arrival_date, 'YYYY-MM-DD') AS estimated_arrival_date,
+           status, description, is_published, created_at, updated_at`,
+        [
+          id,
+          input.title,
+          input.destination,
+          input.closingDate,
+          input.departureDate,
+          input.estimatedArrivalDate,
+          input.status,
+          input.description,
+          input.isPublished,
+        ],
+      );
+      if (!result.rows[0]) throw new WorkflowError("Jadwal pengiriman tidak ditemukan.", 404);
+      response.json({ schedule: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/shipping-schedules/:id", requireOwner, async (request, response, next) => {
+    try {
+      const id = z.string().uuid().parse(request.params["id"]);
+      const result = await pool.query("DELETE FROM shipping_schedules WHERE id = $1 RETURNING id", [
+        id,
+      ]);
+      if (!result.rowCount) throw new WorkflowError("Jadwal pengiriman tidak ditemukan.", 404);
+      response.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.post("/api/batches", requireOwner, async (request, response, next) => {
     try {

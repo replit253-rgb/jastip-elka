@@ -97,6 +97,29 @@ CREATE TABLE IF NOT EXISTS announcements (
 CREATE INDEX IF NOT EXISTS announcements_public_idx
   ON announcements (created_at DESC) WHERE is_published = true;
 
+CREATE TABLE IF NOT EXISTS shipping_schedules (
+  id uuid PRIMARY KEY,
+  title text NOT NULL CHECK (char_length(title) BETWEEN 4 AND 120),
+  destination text NOT NULL CHECK (destination IN ('Semua tujuan', 'Bajawa', 'Malanuza', 'Aimere')),
+  closing_date date NOT NULL,
+  departure_date date NOT NULL,
+  estimated_arrival_date date,
+  status text NOT NULL CHECK (
+    status IN ('collecting', 'closing_soon', 'closed', 'in_transit', 'arrived')
+  ),
+  description text NOT NULL DEFAULT '' CHECK (char_length(description) <= 500),
+  is_published boolean NOT NULL DEFAULT true,
+  created_by uuid NOT NULL REFERENCES staff_users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (closing_date <= departure_date),
+  CHECK (estimated_arrival_date IS NULL OR departure_date <= estimated_arrival_date)
+);
+
+CREATE INDEX IF NOT EXISTS shipping_schedules_public_departure_idx
+  ON shipping_schedules (departure_date, created_at DESC)
+  WHERE is_published = true;
+
 CREATE TABLE IF NOT EXISTS package_batches (
   id uuid PRIMARY KEY,
   title text NOT NULL CHECK (char_length(title) BETWEEN 2 AND 80),

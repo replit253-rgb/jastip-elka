@@ -135,7 +135,7 @@ export function BatchUploadPage() {
         setSheetTitle(parsed.title);
         setSheetName(parsed.sheetName);
         setMessage(
-          `${parsed.items.length} penerima ditemukan dari ${parsed.title}, sheet ${parsed.sheetName}. Target: ${selectedBatch.title} (${selectedBatch.destination}).`,
+          `${parsed.items.length} penerima ditemukan pada file ${file.name}, sheet ${parsed.sheetName} (judul daftar: ${parsed.title}). Target batch: ${selectedBatch.title} (${selectedBatch.destination}).`,
         );
       } catch (cause) {
         setItems([]);
@@ -169,7 +169,7 @@ export function BatchUploadPage() {
         },
       );
       setMessage(
-        `${result.imported} paket dari ${sheetTitle} berhasil diimpor ke ${selectedBatch.title}; ${result.barcodesGenerated} barcode otomatis dibuat.`,
+        `${result.imported} paket dari file ${fileName} (sheet ${sheetName || sheetTitle}) berhasil diimpor ke batch ${selectedBatch.title}; ${result.barcodesGenerated} barcode otomatis dibuat.`,
       );
       resetImport();
       await loadBatches();
@@ -377,7 +377,7 @@ export function BatchUploadPage() {
                 />
               </label>
               {selectedBatch?.has_excel_import && (
-                <p className="ops-message ops-message--error" role="status">
+                <p className="ops-message ops-message--info" role="status">
                   Batch ini sudah pernah diimpor dan barcode telah dibuat. Untuk mengganti data,
                   hapus batch ini lalu buat batch baru.
                 </p>
